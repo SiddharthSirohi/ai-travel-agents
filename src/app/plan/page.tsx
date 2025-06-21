@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +34,16 @@ export default function PlanPage() {
   const [travelStyle, setTravelStyle] = useState<'adventure' | 'chill' | 'luxury'>(storePrefs.style);
   const [groupType, setGroupType] = useState<'solo' | 'couple' | 'family' | 'friends'>(storePrefs.groupType || 'solo');
   const [stage, setStage] = useState<'initial' | 'processing' | 'followup'>('initial');
+
+  // Ensure only "Solo" is selectable when there's exactly one traveler
+  useEffect(() => {
+    if (travelers === 1 && groupType !== 'solo') {
+      setGroupType('solo');
+    }
+    if (travelers > 1 && groupType === 'solo') {
+      setGroupType('couple'); // Default to couple when switching from solo
+    }
+  }, [travelers, groupType]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,9 +158,9 @@ export default function PlanPage() {
                           <label className="text-sm font-medium">Budget Range</label>
                           <Combobox
                             options={[
-                              { value: 'budget', label: 'Budget', subtitle: '₹10K-50K' },
-                              { value: 'moderate', label: 'Moderate', subtitle: '₹50K-2L' },
-                              { value: 'luxury', label: 'Premium', subtitle: '₹2L+' },
+                              { value: 'budget',   label: 'Budget • ₹10K–50K',   subtitle: '₹10K–50K' },
+                              { value: 'moderate', label: 'Moderate • ₹50K–200K', subtitle: '₹50K–200K' },
+                              { value: 'luxury',   label: 'Luxury • ₹200K+',      subtitle: '₹200K+' },
                             ]}
                             value={budget}
                             onValueChange={(val) => setBudget(val as 'budget' | 'moderate' | 'luxury')}
@@ -173,17 +183,30 @@ export default function PlanPage() {
                       <div className="grid md:grid-cols-2 gap-6">
                         <div className="space-y-2">
                           <label className="text-sm font-medium">Group Type</label>
-                          <Combobox
-                            options={[
+                          {(() => {
+                            const baseOptions = [
                               { value: 'solo', label: 'Solo' },
                               { value: 'couple', label: 'Couple' },
                               { value: 'family', label: 'Family' },
                               { value: 'friends', label: 'Friends' },
-                            ]}
-                            value={groupType}
-                            onValueChange={(val) => setGroupType(val as any)}
-                            className="w-full"
-                          />
+                            ] as const;
+                            let options;
+                            if (travelers === 1) {
+                              // Only Solo available when 1 traveler
+                              options = baseOptions.filter((opt) => opt.value === 'solo');
+                            } else {
+                              // Disable Solo when more than 1 traveler
+                              options = baseOptions.filter((opt) => opt.value !== 'solo');
+                            }
+                            return (
+                              <Combobox
+                                options={options as any}
+                                value={groupType}
+                                onValueChange={(val) => setGroupType(val as any)}
+                                className="w-full"
+                              />
+                            );
+                          })()}
                         </div>
                         <div className="space-y-2">
                           <label className="text-sm font-medium">Travel Style</label>
@@ -203,8 +226,8 @@ export default function PlanPage() {
                       {/* Submit Button */}
                       <Button 
                         type="submit" 
-                        className="w-full text-lg py-6 bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 shadow-lg hover:shadow-xl transition-all duration-300" 
-                        disabled={!destination || !startDate || !endDate}
+                        className="w-full text-lg py-6 bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:bg-gradient-to-r disabled:from-muted disabled:to-muted disabled:text-muted-foreground" 
+                        disabled={!destination || !startDate || !endDate || !budget || !travelers || !groupType || !travelStyle || !origin}
                       >
                         <Sparkles className="w-5 h-5 mr-2" />
                         Start Planning
