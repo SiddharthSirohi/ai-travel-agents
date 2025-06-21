@@ -1,9 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { generatePrePlan } from '@/lib/pre-plan';
-import { Mastra } from '@mastra/core';
-import { orchestratorAgent } from '@/mastra/agents/orchestrator-agent';
-import { diningWorkflow } from '@/mastra/workflows/dining-workflow';
+import { mastra } from '@/mastra';
 
 // The Edge runtime is recommended for streaming responses - BUT causes issues with mastra
 // export const runtime = 'edge';
@@ -19,16 +17,8 @@ export async function POST(req: NextRequest) {
     console.log("prePlanResult", prePlanResult);
     console.log('API Route: Pre-plan generated successfully.');
 
-    // 3. Initialize the Mastra instance, registering agents and their dependent workflows.
-    const mastra = new Mastra({
-      agents: {
-        orchestrator: orchestratorAgent,
-      },
-      workflows: {
-        'dining-workflow': diningWorkflow,
-      }
-    });
 
+    // 3. Use the global Mastra instance that's already configured with all agents and workflows.
     console.log("mastra", mastra);
 
     // 4. Get the configured orchestrator agent from the Mastra instance.
@@ -39,40 +29,40 @@ export async function POST(req: NextRequest) {
 
     console.log("agent", agent);
 
-    // 5. Construct the detailed prompt for the agent, providing full context.
-    const agentPrompt = `
-      You have been tasked with creating a detailed travel itinerary.
+         // 5. Construct the detailed prompt for the agent, providing full context.
+     const agentPrompt = `
+       You have been tasked with creating a detailed restaurant itinerary.
 
-      First, here is the high-level, day-by-day plan you must follow:
-      \`\`\`json
-      ${JSON.stringify(prePlanResult.waypoints, null, 2)}
-      \`\`\`
+       First, here is the high-level, day-by-day plan you must follow:
+       \`\`\`json
+       ${JSON.stringify(prePlanResult.waypoints, null, 2)}
+       \`\`\`
 
-      Next, here are the user's detailed preferences which you must adhere to for all recommendations:
-      \`\`\`json
-      ${JSON.stringify(preferences, null, 2)}
-      \`\`\`
+       Next, here are the user's detailed preferences which you must adhere to for all recommendations:
+       \`\`\`json
+       ${JSON.stringify(preferences, null, 2)}
+       \`\`\`
 
-      Your job is to use your available tools to flesh out this itinerary. 
-      For each day in the plan, find suitable dining options that match the user's preferences (budget, cuisine, etc.).
-      When you are done, present the final, enriched itinerary as a comprehensive, day-by-day plan.
-    `;
+       Your job is to use your available tools to flesh out this itinerary. 
+       For each day in the plan, find suitable dining options that match the user's preferences (budget, cuisine, etc.).
+       When you are done, present the final, enriched itinerary as a comprehensive, day-by-day plan.
+     `;
 
-    // 6. Invoke the agent with the prompt and get the streaming response object.
-    console.log('API Route: Invoking orchestrator agent...');
-    const responseStream = await agent.stream(
-      [
-        { role: 'system', content: agentPrompt },
-        { role: 'user', content: 'Please generate a detailed itinerary for the user\'s trip.' }
-      ],
-      { 
-        // We pass runtime options here, not in the agent definition.
-        maxSteps: 10 
-      }
-    );
+         // 6. Invoke the agent with the prompt and get the streaming response object.
+     console.log('API Route: Invoking orchestrator agent...');
+     const responseStream = await agent.stream(
+       [
+         { role: 'system', content: agentPrompt },
+         { role: 'user', content: 'Please generate a detailed itinerary for the user\'s trip.' }
+       ],
+       { 
+         // We pass runtime options here, not in the agent definition.
+         maxSteps: 10 
+       }
+     );
 
-    // 7. Use the Mastra/AI SDK utility to stream the response back to the client.
-    return responseStream.toDataStreamResponse();
+     // 7. Use the Mastra/AI SDK utility to stream the response back to the client.
+     return responseStream.toDataStreamResponse();
 
   } catch (error) {
     console.error('[TRIP_API_ERROR]', error);
