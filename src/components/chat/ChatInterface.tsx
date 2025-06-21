@@ -7,24 +7,24 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useTripStore } from '@/lib/store';
-import { callAgent } from '@/lib/mock-api';
-import { AgentType } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export function ChatInterface() {
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState('');
+  const [currentStreamingMessageId, setCurrentStreamingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { 
     chatMessages, 
     addChatMessage, 
-    updateAgentStatus, 
     startPlanning, 
     stopPlanning,
     isPlanning,
-    addItineraryItem,
-    preferences
+    preferences,
+    destination,
+    dates
   } = useTripStore();
 
   const scrollToBottom = () => {
@@ -33,7 +33,7 @@ export function ChatInterface() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [chatMessages]);
+  }, [chatMessages, streamingMessage]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
@@ -51,70 +51,124 @@ export function ChatInterface() {
     startPlanning();
 
     try {
-      // Simulate AI processing
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Add assistant response
+      // Create a temporary message for streaming
+      const tempMessageId = `streaming-${Date.now()}`;
+      setCurrentStreamingMessageId(tempMessageId);
+      setStreamingMessage('');
+
+      // Add initial assistant message
       addChatMessage({
         role: 'assistant',
-        content: `Got it! You're interested in "${userMessage}". Let me check with our travel agents to find the best options for you.`,
+        content: 'Let me help you plan your trip. I\'m gathering information from our travel agents...',
       });
 
-      // Trigger agent calls based on message content
-      const agentTypes: AgentType[] = [];
-      
-      if (userMessage.toLowerCase().includes('flight') || userMessage.toLowerCase().includes('fly')) {
-        agentTypes.push('flights');
-      }
-      if (userMessage.toLowerCase().includes('hotel') || userMessage.toLowerCase().includes('stay')) {
-        agentTypes.push('hotels');
-      }
-      if (userMessage.toLowerCase().includes('restaurant') || userMessage.toLowerCase().includes('eat')) {
-        agentTypes.push('dining');
-      }
-      if (userMessage.toLowerCase().includes('activity') || userMessage.toLowerCase().includes('do')) {
-        agentTypes.push('activities');
+      // Prepare the request payload
+      const requestPayload = {
+        message: userMessage,
+        preferences: {
+          ...preferences,
+          destination: destination?.name || 'Not specified',
+          startDate: dates?.startDate || '',
+          endDate: dates?.endDate || '',
+        },
+      };
+
+             // Make streaming request to API
+       // Use the test endpoint if no preferences are set, otherwise use the full trip endpoint
+       const endpoint = (!destination?.name && !dates?.startDate) ? '/api/chat' : '/api/trip';
+       const payload = endpoint === '/api/chat' ? { message: userMessage } : requestPayload;
+
+       const response = await fetch(endpoint, {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+         body: JSON.stringify(payload),
+       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      // If no specific agents mentioned, use all
-      if (agentTypes.length === 0) {
-        agentTypes.push('flights', 'hotels', 'dining', 'activities');
+      if (!response.body) {
+        throw new Error('No response body');
       }
 
-      // Call agents in parallel
-      const agentPromises = agentTypes.map(async (agentType) => {
-        updateAgentStatus(agentType, { status: 'working', progress: 0 });
-        
-        try {
-          const results = await callAgent(agentType, userMessage, preferences);
-          results.forEach(item => addItineraryItem(item));
-          updateAgentStatus(agentType, { status: 'completed', progress: 100 });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
           
-          return { agentType, results };
-        } catch (error) {
-          updateAgentStatus(agentType, { status: 'error' });
-          throw error;
-        }
-      });
+          if (done) {
+            break;
+          }
 
-      const results = await Promise.allSettled(agentPromises);
-      
-      // Add summary message
-      const successfulResults = results.filter(r => r.status === 'fulfilled');
-      if (successfulResults.length > 0) {
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              
+              if (data === '[DONE]') {
+                break;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                
+                // Handle different types of streaming data
+                if (parsed.type === 'text_delta' && parsed.text_delta?.content) {
+                  accumulatedContent += parsed.text_delta.content;
+                  setStreamingMessage(accumulatedContent);
+                } else if (parsed.type === 'text' && parsed.text) {
+                  accumulatedContent += parsed.text;
+                  setStreamingMessage(accumulatedContent);
+                } else if (parsed.content) {
+                  // Handle direct content
+                  accumulatedContent += parsed.content;
+                  setStreamingMessage(accumulatedContent);
+                }
+                             } catch {
+                 // Handle non-JSON data (plain text chunks)
+                 if (data && data !== 'undefined') {
+                   accumulatedContent += data;
+                   setStreamingMessage(accumulatedContent);
+                 }
+               }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Add the final complete message
+      if (accumulatedContent.trim()) {
         addChatMessage({
           role: 'assistant',
-          content: `Great! I found ${successfulResults.length} categories of options for you. Check out the timeline to see your itinerary taking shape!`,
+          content: accumulatedContent.trim(),
+        });
+      } else {
+        addChatMessage({
+          role: 'assistant',
+          content: 'I\'ve finished processing your request. Check your itinerary for the results!',
         });
       }
 
     } catch (error) {
+      console.error('Streaming error:', error);
       addChatMessage({
         role: 'assistant',
-        content: 'I encountered an issue while searching. Please try again.',
+        content: 'I encountered an issue while processing your request. Please try again or check your connection.',
       });
     } finally {
       setIsTyping(false);
+      setStreamingMessage('');
+      setCurrentStreamingMessageId(null);
       stopPlanning();
     }
   };
@@ -161,7 +215,7 @@ export function ChatInterface() {
                     ? 'bg-primary text-primary-foreground border-primary'
                     : 'bg-card'
                 }`}>
-                  <div className="text-sm">
+                  <div className="text-sm whitespace-pre-wrap">
                     {message.content}
                   </div>
                   <div className="flex items-center justify-between mt-2 text-xs opacity-70">
@@ -178,8 +232,34 @@ export function ChatInterface() {
           ))}
         </AnimatePresence>
 
+        {/* Streaming message */}
+        {streamingMessage && currentStreamingMessageId && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-start"
+          >
+            <div className="flex items-start space-x-2 max-w-[80%]">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center">
+                <Bot className="w-4 h-4" />
+              </div>
+              <Card className="p-3 bg-card border-primary/50">
+                <div className="text-sm whitespace-pre-wrap">
+                  {streamingMessage}
+                  <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
+                </div>
+                <div className="flex items-center mt-2 text-xs opacity-70">
+                  <Badge variant="outline" className="text-primary border-primary/50">
+                    Streaming...
+                  </Badge>
+                </div>
+              </Card>
+            </div>
+          </motion.div>
+        )}
+
         {/* Typing indicator */}
-        {isTyping && (
+        {isTyping && !streamingMessage && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -224,7 +304,7 @@ export function ChatInterface() {
         </div>
         {isPlanning && (
           <div className="text-xs text-muted-foreground mt-2">
-            Our smart travel agents are working on your request...
+            {streamingMessage ? 'Columbus AI is responding...' : 'Our smart travel agents are working on your request...'}
           </div>
         )}
       </div>

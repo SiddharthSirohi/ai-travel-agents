@@ -28,10 +28,9 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("agent", agent);
-
          // 5. Construct the detailed prompt for the agent, providing full context.
      const agentPrompt = `
-       You have been tasked with creating a detailed restaurant itinerary.
+       You have been tasked with creating a detailed travel itinerary including accommodations.
 
        First, here is the high-level, day-by-day plan you must follow:
        \`\`\`json
@@ -43,9 +42,18 @@ export async function POST(req: NextRequest) {
        ${JSON.stringify(preferences, null, 2)}
        \`\`\`
 
-       Your job is to use your available tools to flesh out this itinerary. 
-       For each day in the plan, find suitable dining options that match the user's preferences (budget, cuisine, etc.).
-       When you are done, present the final, enriched itinerary as a comprehensive, day-by-day plan.
+       Your job is to use your available tools to flesh out this itinerary.
+       For each location in the plan:
+       1. Use the accommodation-workflow-tool to find suitable accommodations that match:
+          - The user's budget tier (budget/mid-range/luxury/ultra-luxury)
+          - Preferred accommodation type (hotel/hostel/resort/apartment/guesthouse/bnb)
+          - Location requirements from the waypoints
+       2. Find suitable dining and activity options that match the user's preferences
+       
+       When you are done, present the final, enriched itinerary as a comprehensive, day-by-day plan including:
+       - Accommodation details with check-in/check-out dates
+       - Daily activities and dining recommendations
+       - Local transportation options between locations
      `;
 
          // 6. Invoke the agent with the prompt and get the streaming response object.
@@ -53,11 +61,13 @@ export async function POST(req: NextRequest) {
      const responseStream = await agent.stream(
        [
          { role: 'system', content: agentPrompt },
-         { role: 'user', content: 'Please generate a detailed itinerary for the user\'s trip.' }
+         { 
+           role: 'user', 
+           content: 'Please generate a detailed itinerary including accommodations, dining, and activities that match the provided preferences and waypoints.'
+         }
        ],
        { 
-         // We pass runtime options here, not in the agent definition.
-         maxSteps: 10 
+         maxSteps: 15, // Increased to allow for accommodation workflow
        }
      );
 

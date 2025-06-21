@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { openai } from '@ai-sdk/openai';
 import { diningTool } from '../tools/dining-tool';
+import { accommodationWorkflowTool } from '../tools/accommodation-workflow-tool';
 
 // TODO: Import other child agent tools as they are created
 // import { transportTool } from '../tools/transport-tool';
@@ -30,6 +31,7 @@ export const orchestratorAgent = new Agent({
   // Register the tools this agent is allowed to use.
   tools: {
     dining: diningTool,
+    accommodation: accommodationWorkflowTool,
     // transport: transportTool,
     // hotels: hotelsTool,
     // activities: activitiesTool,
