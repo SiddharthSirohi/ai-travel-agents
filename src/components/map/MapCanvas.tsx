@@ -70,10 +70,12 @@ export function MapCanvas() {
 
   if (!isClient) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-4xl">🗺️</div>
-          <p className="text-muted-foreground">Loading map...</p>
+      <div className="h-full p-4">
+        <div className="h-full flex items-center justify-center rounded-lg border">
+          <div className="text-center space-y-4">
+            <div className="text-4xl">🗺️</div>
+            <p className="text-muted-foreground">Loading map...</p>
+          </div>
         </div>
       </div>
     );
@@ -81,14 +83,16 @@ export function MapCanvas() {
 
   if (itemsWithCoordinates.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-6xl opacity-50">🗺️</div>
-          <div>
-            <h3 className="text-lg font-medium">No locations to display</h3>
-            <p className="text-muted-foreground">
-              Add some itinerary items to see them on the map
-            </p>
+      <div className="h-full p-4">
+        <div className="h-full flex items-center justify-center rounded-lg border">
+          <div className="text-center space-y-4">
+            <div className="text-6xl opacity-50">🗺️</div>
+            <div>
+              <h3 className="text-lg font-medium">No locations to display</h3>
+              <p className="text-muted-foreground">
+                Add some itinerary items to see them on the map
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -96,8 +100,9 @@ export function MapCanvas() {
   }
 
   return (
-    <div className="h-full relative">
-      <MapContainer
+    <div className="h-full p-4">
+      <div className="h-full relative">
+        <MapContainer
         center={defaultCenter as [number, number]}
         zoom={10}
         style={{ height: '100%', width: '100%' }}
@@ -143,10 +148,10 @@ export function MapCanvas() {
             </Popup>
           </Marker>
         ))}
-      </MapContainer>
+        </MapContainer>
 
-      {/* Legend */}
-      <div className="absolute top-4 right-4 z-[1000]">
+        {/* Legend */}
+        <div className="absolute top-4 right-4 z-[1000]">
         <Card className="bg-white/95 backdrop-blur-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Legend</CardTitle>
@@ -222,6 +227,7 @@ export function MapCanvas() {
           </Card>
         </motion.div>
       )}
+      </div>
     </div>
   );
 } 

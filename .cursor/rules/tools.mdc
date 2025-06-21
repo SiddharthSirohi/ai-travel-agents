@@ -1,0 +1,6 @@
+---
+description: Needed when you want to add tools
+globs: 
+alwaysApply: false
+---
+Use https://docs.composio.dev/frameworks/mastra for tools
