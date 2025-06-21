@@ -5,11 +5,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Calendar, Map, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Map, MessageSquare, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { ChatInterface } from './chat/ChatInterface';
 import { TimelineCanvas } from './timeline/TimelineCanvas';
 import { MapCanvas } from './map/MapCanvas';
-import { GlobalControls } from './controls/GlobalControls';
+import { TripSummaryBar } from './controls/TripSummaryBar';
 import { AnimatedGradientText } from './magicui/animated-gradient-text';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -21,9 +21,9 @@ export function TravelCompanion() {
   return (
     <TooltipProvider>
       <div className="h-screen flex flex-col bg-gradient-to-br from-background to-muted/20">
-        {/* Header with global controls */}
+        {/* Header with summary bar */}
         <div className="flex-shrink-0">
-          <GlobalControls />
+          <TripSummaryBar />
         </div>
 
         {/* Main content area */}
@@ -51,21 +51,17 @@ export function TravelCompanion() {
                     </TabsTrigger>
                   </TabsList>
                   
-                  {/* Chat toggle button */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsChatOpen(!isChatOpen)}
-                    className="flex items-center space-x-2"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    <span>{isChatOpen ? 'Hide Chat' : 'Show Chat'}</span>
-                    {isChatOpen ? (
-                      <ChevronRight className="w-4 h-4" />
-                    ) : (
-                      <ChevronLeft className="w-4 h-4" />
-                    )}
-                  </Button>
+                  {/* Expand sidebar button when chat is closed */}
+                  {!isChatOpen && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsChatOpen(true)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <PanelRightOpen className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -108,24 +104,20 @@ export function TravelCompanion() {
                 className="flex-shrink-0 border-l bg-card/50 overflow-hidden"
               >
                 <div className="w-96 h-full flex flex-col">
-                  <div className="border-b px-4 py-3 bg-card/80">
+                  <div className="border-b px-6 py-3 bg-card/50">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <MessageSquare className="w-4 h-4" />
-                        <h2 className="font-semibold">Chat with AI</h2>
+                      <div className="h-9 flex items-center">
+                        <h2 className="font-semibold">Ask Columbus about your itinerary</h2>
                       </div>
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         onClick={() => setIsChatOpen(false)}
                         className="h-8 w-8 p-0"
                       >
-                        <ChevronRight className="w-4 h-4" />
+                        <PanelRightClose className="w-4 h-4" />
                       </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Ask about flights, hotels, restaurants, or activities
-                    </p>
                   </div>
                   <ChatInterface />
                 </div>
@@ -133,26 +125,7 @@ export function TravelCompanion() {
             )}
           </AnimatePresence>
 
-          {/* Chat toggle when closed - floating button */}
-          {!isChatOpen && (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.2 }}
-              className="fixed right-4 top-1/2 -translate-y-1/2 z-40"
-            >
-              <Button
-                onClick={() => setIsChatOpen(true)}
-                size="sm"
-                className="h-12 px-3 shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground"
-              >
-                <div className="flex flex-col items-center space-y-1">
-                  <MessageSquare className="w-4 h-4" />
-                  <ChevronLeft className="w-3 h-3" />
-                </div>
-              </Button>
-            </motion.div>
-          )}
+
         </div>
 
         {/* Responsive mobile layout */}

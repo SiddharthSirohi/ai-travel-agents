@@ -11,10 +11,16 @@ export interface TripDates {
 }
 
 export interface TravelPreferences {
-  budget: number;
-  maxBudget: number;
+  budget: 'budget' | 'moderate' | 'luxury';
   style: 'adventure' | 'chill' | 'luxury';
   travelers: number;
+  // FOLLOW-UP PREFERENCES
+  transport?: 'flight' | 'train' | 'bus' | 'car';
+  accommodation?: 'hotel' | 'hostel' | 'resort' | 'apartment';
+  dietary?: 'vegetarian' | 'non-vegetarian' | 'both';
+  food?: string[]; // e.g. ["street food", "fine dining"]
+  activities?: string[]; // e.g. ["outdoors", "museums"]
+  groupType?: 'solo' | 'couple' | 'family' | 'friends';
 }
 
 export interface ItineraryItem {
