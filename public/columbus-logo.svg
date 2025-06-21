@@ -1,0 +1,6 @@
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <!-- Outer circle -->
+  <circle cx="60" cy="60" r="58" stroke="#6366F1" stroke-width="4" fill="white" />
+  <!-- Compass rose / star -->
+  <path d="M60 22 L68 52 L98 60 L68 68 L60 98 L52 68 L22 60 L52 52 Z" fill="#6366F1" stroke="#6366F1" stroke-width="2" stroke-linejoin="round" />
+</svg> 

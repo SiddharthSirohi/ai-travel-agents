@@ -57,7 +57,7 @@ export function ChatInterface() {
       // Add assistant response
       addChatMessage({
         role: 'assistant',
-        content: `I understand you're looking for "${userMessage}". Let me check with my agents to find the best options for you.`,
+        content: `Got it! You're interested in "${userMessage}". Let me check with our travel agents to find the best options for you.`,
       });
 
       // Trigger agent calls based on message content
@@ -209,7 +209,7 @@ export function ChatInterface() {
           <Input
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Ask about flights, hotels, restaurants, or activities..."
+            placeholder="Ask Columbus AI about flights, hotels, restaurants, or activities..."
             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
             disabled={isPlanning}
             className="flex-1"
@@ -224,7 +224,7 @@ export function ChatInterface() {
         </div>
         {isPlanning && (
           <div className="text-xs text-muted-foreground mt-2">
-            AI agents are working on your request...
+            Our smart travel agents are working on your request...
           </div>
         )}
       </div>

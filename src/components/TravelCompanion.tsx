@@ -107,7 +107,7 @@ export function TravelCompanion() {
                   <div className="border-b px-6 py-3 bg-card/50">
                     <div className="flex items-center justify-between">
                       <div className="h-9 flex items-center">
-                        <h2 className="font-semibold">Ask Columbus about your itinerary</h2>
+                        <h2 className="font-semibold">Ask Columbus AI about your itinerary</h2>
                       </div>
                       <Button
                         variant="outline"
@@ -153,7 +153,7 @@ export function TravelCompanion() {
               ✈️
             </motion.div>
             <div className="space-y-2">
-              <h2 className="text-xl font-semibold">Loading Travel Companion</h2>
+              <h2 className="text-xl font-semibold">Loading Columbus AI</h2>
               <p className="text-muted-foreground">Initializing AI agents...</p>
             </div>
           </div>

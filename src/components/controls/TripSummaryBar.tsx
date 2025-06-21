@@ -4,7 +4,7 @@ import { MapPin, Calendar as CalendarIcon, Users, Mountain, Sparkles, Crown } fr
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { useTripStore } from '@/lib/store';
-import { cn } from '@/lib/utils';
+import { BrandLogo } from '@/components/BrandLogo';
 
 export function TripSummaryBar() {
   const { destination, dates, preferences, agentStatuses } = useTripStore();
@@ -57,7 +57,8 @@ export function TripSummaryBar() {
     <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex items-center justify-between px-4 py-2">
         {/* Left: Trip Info */}
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm items-center">
+          <BrandLogo size={32} className="mr-2" />
           {destination && (
             <Badge variant="outline" className="flex items-center gap-1 px-2 py-1">
               <MapPin className="w-3 h-3" />
