@@ -1,16 +1,14 @@
 "use client";
-
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Calendar, Map, MessageSquare, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Calendar, Map, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { ChatInterface } from './chat/ChatInterface';
 import { TimelineCanvas } from './timeline/TimelineCanvas';
 import { MapCanvas } from './map/MapCanvas';
 import { TripSummaryBar } from './controls/TripSummaryBar';
-import { AnimatedGradientText } from './magicui/animated-gradient-text';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
