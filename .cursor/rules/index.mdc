@@ -1,0 +1,151 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+The proposed AI-powered travel companion collapses the entire trip-planning workflow—from user intent to a day-by-day itinerary—into one conversational web app. A lightweight **pre-processor** (a Mastra *workflow-as-tool*) invokes **OpenAI o3** to transform free-form preferences into an array of `{ location, date, objective }` waypoints. The **orchestrator agent** consumes this structured “skeleton,” then fires domain-specific child agents (flights, hotels, dining, activities). Results are merged, checked for timing/location consistency, and enriched with “local guide” micro-content (transport options, weather suitability, shopping tips, culture phrases). Everything runs in memory for hackathon speed—no permanent DB—yet the design leaves clear seams for future persistence, scaling, and analytics.  
+---
+
+## **1\. Problem Statement**
+
+Trip hunters juggle dozens of tabs to cross-match flights, lodging, food, local quirks, and weather. Manual context-switching leads to missed deals and clashing schedules. A multi-agent planner that ingests a single prompt, reasons over preferences, and returns an editable itinerary removes that pain and showcases the power of autonomous AI.
+
+## **2\. Scope**
+
+* Conversational chat UI (Next.js 14 \+ ChatScope kit)
+
+* Pre-processing workflow using OpenAI o3 for waypoint generation
+
+* Orchestrator \+ four child agents (Transport, Hotels, Dining, Activities)
+
+* Data enrichment with LocalGuide (transport, attractions, shopping, culture, climate)
+
+* 3- to 7-day itineraries, city- and date-agnostic, classic **or** quirky style toggles
+
+## **3\. Anti-Scope**
+
+Real bookings, multi-city legs, persistent user accounts, push notifications, mobile apps, advanced analytics.
+
+## **4\. Proposed Solution**
+
+### **4.1 Pre-Processing (Workflow-as-Tool)**
+
+* **Why workflow-as-tool?** Mastra’s *AgentNetwork* is powerful but adds an LLM router layer best suited to dynamic, branching collaboration — overkill for a deterministic, single-call task.
+
+* **Workflow definition:**
+
+  1. Input raw `message` & session UUID
+
+  2. Call `openai.o3.chat.completions` with a structured prompt asking for 3-7 daily waypoints (`location`, `date`, `objective`)
+
+  3. Validate JSON via schema guard
+
+  4. Return `PrePlanResult` to the orchestrator as a standard Mastra *tool* output.
+
+* Rationale: o3’s stronger reasoning/formatting improves JSON fidelity vs. older GPT models.
+
+### **4.2 Orchestrator & Child Agents**
+
+* **Orchestrator (Mastra Agent):**
+
+  * Receives waypoints \+ prefs
+
+  * Fires agents in parallel and merges results (use `Promise.all`)
+
+  * Performs consistency checks (time zone, budget, location radius) with Pydantic validation
+
+* **Child Agents:**
+
+  * `TransportAgent` → Perplexity API to know sequentially the modes of transport like if i want to go to oxford. I will take a cab from my home to Kempegowda airport then take a flight from BLR to LHR then take a train from London to Oxford (Elizabeth line then GWR). Then we can use specific services for flights, trains, cabs, and buses.   
+    Skyscanner for flights, IRCTC for trains, Redbus for buses, Uber for cabs, etc.
+
+  * `HotelsAgent` → Amadeus Hotel Search (150k+ properties; generous free tier)
+
+  * `DiningAgent` → Google Maps (global restaurants & price tiers)
+
+  * `ActivitiesAgent` → Perplexity API will tell the plan. Then the specific curated events will be searched via Viator API
+
+* **LocalGuideService:**
+
+  * Transportation modes via Google Maps tool
+
+  * Top attractions & POIs via Google Maps tool
+
+  * Climate normals via Meteostat API for “best-month” note
+
+  * Shopping tips & phrases from Wikivoyage scrape (fallback JSON); summarised by GPT-3.5 for 1-2-sentence blurbs.
+
+### **4.3 Front-End**
+
+* Chat page (`/chat`) with a interactive map and a calendar on side.
+
+* SSE endpoint streams partial results; skeleton loaders show progress.
+
+### **4.4 Data Storage & Caching**
+
+* In-memory Maps (`TripPrefs`, `Itinerary`, simple TTL cache) mirror the earlier DDL for future SQL migration.
+
+## **5\. Implementation Spec**
+
+### **5.1 In-Memory Schema (DDL Reference)**
+
+```sql
+CREATE TABLE TripPreferences (sessionId TEXT PRIMARY KEY, destination TEXT, startDate DATE, endDate DATE, travellers INT, budgetTier TEXT, style TEXT);
+CREATE TABLE Itinerary       (sessionId TEXT PRIMARY KEY, generatedAt TIMESTAMP, draftJSON JSONB);
+CREATE TABLE SearchCache     (cacheKey TEXT PRIMARY KEY, payload JSONB, expiresAt TIMESTAMP);
+```
+
+### **5.2 TypeScript Contracts**
+
+Key interfaces (`TripPrefs`, `Waypoint`, `FlightOption`, `HotelOption`, `DiningOption`, `ActivityOption`, `Itinerary`) remain as in the previous draft, plus:
+
+```ts
+export interface Waypoint {
+  location: string;
+  date: string;       // ISO
+  objective: string;
+}
+
+export interface Itinerary {
+  waypoints: Waypoint[];
+}
+```
+
+### **5.3 REST Routes (internal)**
+
+* `POST /api/itinerary` → `AgentRequest<message>` → `Itinerary`
+
+* `POST /api/chat` (orchestrator SSE)
+
+* `POST /api/agents/{transport|hotels|dining|activities}` as described earlier
+
+```
+
+```
+
+### **5.4 Milestones (additions)**
+
+| Id | Task | ETA (days) |
+| ----- | ----- | ----- |
+| M1 | Bootstrap Next.js \+ Mastra \+ ChatScope | 0.1 |
+| M2 | Implement `/api/preplan` workflow (o3) | 0.1 |
+| M3 | Orchestrator skeleton & SSE | 0.1 |
+| M4 | Flights \+ Hotels agents | 0.1 |
+| M5 | Dining \+ Activities agents | 0.1 |
+| M6 | LocalGuideService integration | 0.1 |
+| M7 | Itinerary builder & validation rules | 0.1 |
+| M8 | UI polish, error handling, demo script | 0.1 |
+
+*Total ≈ 17hr of focused hackathon work.*  
+M1 is done, basic UI is made
+
+## **6\. Success Criteria**
+
+| Metric | Target |
+| ----- | ----- |
+| Pre-plan JSON validity | 100 % schema-valid |
+| First partial reply time | \< 2 s |
+| Full itinerary \+ guide | \< 10 s |
+| Cultural tips completeness | ≥ 3 local phrases \+ 2 shopping items |
+| Demo dry-runs pass | 3 consecutive |
+
