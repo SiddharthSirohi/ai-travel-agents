@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Combobox } from '@/components/ui/combobox';
-import { searchDestinations } from '@/lib/mock-api';
+import { searchDestinations, mockDestinations } from '@/lib/mock-api';
 import { TripDestination } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -17,13 +17,17 @@ export function DestinationSearch({ value, onSelect, className }: DestinationSea
   const [searchResults, setSearchResults] = useState<TripDestination[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Debounce search to avoid too many API calls
+  // Provide alphabetical list when the search query is empty or too short.
+  // For longer queries (>1 char) we debounce and run the fuzzy search.
   useEffect(() => {
+    // When query is empty (or < 2 chars) show alphabetical list
     if (!searchQuery || searchQuery.length < 2) {
-      setSearchResults([]);
+      const sortedAll = [...mockDestinations].sort((a, b) => a.name.localeCompare(b.name));
+      setSearchResults(sortedAll);
       return;
     }
 
+    // Debounce API-like search for longer queries
     const timeoutId = setTimeout(() => {
       setIsLoading(true);
       try {
@@ -35,7 +39,7 @@ export function DestinationSearch({ value, onSelect, className }: DestinationSea
       } finally {
         setIsLoading(false);
       }
-    }, 300); // 300ms debounce
+    }, 300); // 300 ms debounce
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
@@ -93,13 +97,7 @@ export function DestinationSearch({ value, onSelect, className }: DestinationSea
       onSearch={handleSearch}
       placeholder="Search destinations..."
       searchPlaceholder="Type to search cities..."
-      emptyText={
-        isLoading 
-          ? "Searching..." 
-          : searchQuery.length < 2 
-            ? "Type at least 2 characters to search"
-            : "No destinations found"
-      }
+      emptyText={isLoading ? "Searching..." : "No destinations found"}
       className={cn("w-full", className)}
     />
   );

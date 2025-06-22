@@ -1,18 +1,31 @@
 "use client";
-
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Calendar, Map, MessageSquare, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Calendar, Map, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { ChatInterface } from './chat/ChatInterface';
 import { TimelineCanvas } from './timeline/TimelineCanvas';
-import { MapCanvas } from './map/MapCanvas';
 import { TripSummaryBar } from './controls/TripSummaryBar';
-import { AnimatedGradientText } from './magicui/animated-gradient-text';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+
+// Dynamically import MapCanvas with SSR disabled
+const MapCanvas = dynamic(() => import('./map/MapCanvas').then((mod) => mod.MapCanvas), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full p-4">
+      <div className="h-full flex items-center justify-center rounded-lg border">
+        <div className="text-center space-y-4">
+          <div className="text-4xl">🗺️</div>
+          <p className="text-muted-foreground">Loading map...</p>
+        </div>
+      </div>
+    </div>
+  ),
+});
 
 export function TravelCompanion() {
   const [activeTab, setActiveTab] = useState('timeline');
@@ -107,7 +120,7 @@ export function TravelCompanion() {
                   <div className="border-b px-6 py-3 bg-card/50">
                     <div className="flex items-center justify-between">
                       <div className="h-9 flex items-center">
-                        <h2 className="font-semibold">Ask Columbus about your itinerary</h2>
+                        <h2 className="font-semibold">Ask Columbus AI about your itinerary</h2>
                       </div>
                       <Button
                         variant="outline"
@@ -153,7 +166,7 @@ export function TravelCompanion() {
               ✈️
             </motion.div>
             <div className="space-y-2">
-              <h2 className="text-xl font-semibold">Loading Travel Companion</h2>
+              <h2 className="text-xl font-semibold">Loading Columbus AI</h2>
               <p className="text-muted-foreground">Initializing AI agents...</p>
             </div>
           </div>

@@ -1,19 +1,20 @@
 import { Mastra } from '@mastra/core/mastra';
-import { PinoLogger } from '@mastra/loggers';
-import { LibSQLStore } from '@mastra/libsql';
-import { weatherWorkflow } from './workflows/weather-workflow';
-import { weatherAgent } from './agents/weather-agent';
-import { diningAgent } from './agents/dining-agent';
+import { diningWorkflow } from './workflows/dining-workflow';
+import { orchestratorAgent } from './agents/orchestrator-agent';
+import { accommodationWorkflow } from './workflows/accommodation-workflow';
+import { feedbackOrchestratorAgent } from './agents/feedback-orchestrator-agent';
+import { experiencesWorkflow } from './workflows/experiences-workflow';
 
 export const mastra = new Mastra({
-  workflows: { weatherWorkflow },
-  agents: { weatherAgent, diningAgent },
-  storage: new LibSQLStore({
-    // stores telemetry, evals, ... into memory storage, if it needs to persist, change to file:../mastra.db
-    url: ":memory:",
-  }),
-  logger: new PinoLogger({
-    name: 'Mastra',
-    level: 'info',
-  }),
+  workflows: { 
+    'dining-workflow': diningWorkflow,
+    'accommodation-workflow': accommodationWorkflow,
+    'experiences-workflow': experiencesWorkflow
+  },
+  agents: { 
+    orchestrator: orchestratorAgent,
+    feedbackOrchestrator: feedbackOrchestratorAgent 
+  },
+  // Remove LibSQL storage to avoid serverless compatibility issues
+  // Storage can be added later when needed for persistence
 });
