@@ -19,6 +19,7 @@ interface Meal {
   placeId: string;
   timeFrom: string;
   timeTo: string;
+  location?: string;
 }
 
 interface MealDay {
@@ -114,6 +115,11 @@ export function TripSummaryBar() {
       console.log('Trip generation response:', data);
 
       const mealItems: ItineraryItem[] = mealsByDays.flatMap((day: MealDay) => {
+        const lunchCoordsStr = day.lunch.location;
+        const lunchCoords = lunchCoordsStr?.includes(',')
+          ? (lunchCoordsStr.split(',').map(Number) as [number, number])
+          : undefined;
+
         const lunchItem: ItineraryItem = {
           id: `${day.date}-lunch-${day.lunch.placeId}`,
           type: 'meal',
@@ -123,6 +129,7 @@ export function TripSummaryBar() {
           time: convertTime12to24(day.lunch.timeFrom),
           duration: 120,
           location: day.lunch.address,
+          coordinates: lunchCoords,
           price: 0, // Or parse from priceRange
           currency: 'USD',
           status: 'confirmed',
@@ -133,6 +140,12 @@ export function TripSummaryBar() {
             specialties: day.lunch.specialties,
           },
         };
+
+        const dinnerCoordsStr = day.dinner.location;
+        const dinnerCoords = dinnerCoordsStr?.includes(',')
+          ? (dinnerCoordsStr.split(',').map(Number) as [number, number])
+          : undefined;
+
         const dinnerItem: ItineraryItem = {
           id: `${day.date}-dinner-${day.dinner.placeId}`,
           type: 'meal',
@@ -142,6 +155,7 @@ export function TripSummaryBar() {
           time: convertTime12to24(day.dinner.timeFrom),
           duration: 120,
           location: day.dinner.address,
+          coordinates: dinnerCoords,
           price: 0,
           currency: 'USD',
           status: 'confirmed',
