@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
@@ -89,29 +89,45 @@ export function FollowupQuestions({ onFinish, className }: FollowupProps) {
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [showCurrentQuestion, setShowCurrentQuestion] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const currentQuestion = QUESTIONS[step];
 
-  const handleSingleSelect = async (value: string) => {
-    setAnswers((prev) => {
-      const newA = { ...prev, [currentQuestion.field]: value };
-      return newA;
-    });
+  // Auto-scroll to bottom when step changes or processing state changes
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      const scrollContainer = scrollContainerRef.current;
+      scrollContainer.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [step, isProcessing, showCurrentQuestion]);
 
-    // Show processing state
+  const handleSingleSelect = async (value: string) => {
+    const updatedAnswers = { ...answers, [currentQuestion.field]: value };
+    setAnswers(updatedAnswers);
+
+    // If this is the last question, append it to history and finish
+    if (step === QUESTIONS.length - 1) {
+      // push the final Q/A into history view
+      setStep(step + 1);
+      // give the UI a tiny moment to render before navigating away
+      setTimeout(() => {
+        onFinish(updatedAnswers);
+      }, 300);
+      return;
+    }
+
+    // Otherwise proceed with the usual transition
     setIsProcessing(true);
     setShowCurrentQuestion(false);
 
-    // Artificial delay before next question
     setTimeout(() => {
       setIsProcessing(false);
-      if (step < QUESTIONS.length - 1) {
-        setStep(step + 1);
-        setShowCurrentQuestion(true);
-      } else {
-        onFinish({ ...answers, [currentQuestion.field]: value });
-      }
-    }, 600 + Math.random() * 400); // 0.6-1 seconds
+      setStep(step + 1);
+      setShowCurrentQuestion(true);
+    }, 600 + Math.random() * 400);
   };
 
   const handleMultiToggle = (value: string) => {
@@ -130,19 +146,23 @@ export function FollowupQuestions({ onFinish, className }: FollowupProps) {
   const handleNext = async () => {
     if (!canContinue()) return;
     
+    // If last question in multi-select flow
+    if (step === QUESTIONS.length - 1) {
+      setStep(step + 1);
+      setTimeout(() => {
+        onFinish(answers);
+      }, 300);
+      return;
+    }
+
     setIsProcessing(true);
     setShowCurrentQuestion(false);
 
-    // Artificial delay before next question
     setTimeout(() => {
       setIsProcessing(false);
-      if (step < QUESTIONS.length - 1) {
-        setStep(step + 1);
-        setShowCurrentQuestion(true);
-      } else {
-        onFinish(answers);
-      }
-    }, 600 + Math.random() * 400); // 0.6-1 seconds
+      setStep(step + 1);
+      setShowCurrentQuestion(true);
+    }, 600 + Math.random() * 400);
   };
 
   const getAnswerDisplay = (question: Question) => {
@@ -154,27 +174,8 @@ export function FollowupQuestions({ onFinish, className }: FollowupProps) {
   };
 
   return (
-    <Card className={cn('w-full max-w-2xl min-h-[600px] flex flex-col overflow-hidden', className)}>
-      <CardContent className="flex-1 overflow-auto px-8 py-6 space-y-6">
-        {/* Progress indicator */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="text-sm text-muted-foreground">
-            Question {step + 1} of {QUESTIONS.length}
-          </div>
-          <div className="flex space-x-1">
-            {QUESTIONS.map((_, index) => (
-              <div
-                key={index}
-                className={cn(
-                  'w-2 h-2 rounded-full transition-colors',
-                  index < step ? 'bg-green-500' : 
-                  index === step ? 'bg-primary' : 'bg-muted'
-                )}
-              />
-            ))}
-          </div>
-        </div>
-
+    <Card className={cn('w-full max-w-2xl h-[600px] flex flex-col overflow-hidden', className)}>
+      <CardContent ref={scrollContainerRef} className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
         {/* Previous questions */}
         <AnimatePresence>
           {QUESTIONS.slice(0, step).map((q, index) => (
@@ -223,13 +224,13 @@ export function FollowupQuestions({ onFinish, className }: FollowupProps) {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-4"
             >
-              <div className="bg-gradient-to-r from-primary/10 to-secondary/10 px-6 py-4 rounded-lg border border-primary/20">
-                <p className="text-lg font-medium">{currentQuestion.text}</p>
+              <div className="bg-muted/50 px-6 py-4 rounded-lg border border-primary/10">
+                <p className="text-sm font-medium text-foreground/90">{currentQuestion.text}</p>
               </div>
               
-              <div className="pl-4">
+              <div className="px-6">
                 {currentQuestion.type === 'single' ? (
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-3">
                     {currentQuestion.options.map((option) => (
                       <Button
                         key={option.value}
@@ -268,6 +269,9 @@ export function FollowupQuestions({ onFinish, className }: FollowupProps) {
             </motion.div>
           )}
         </AnimatePresence>
+        
+        {/* Spacer to ensure the last question has enough space above the bottom navigation */}
+        <div className="pb-1"></div>
       </CardContent>
       
       {/* Bottom navigation for multi-select questions */}
@@ -275,7 +279,7 @@ export function FollowupQuestions({ onFinish, className }: FollowupProps) {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="border-t p-6"
+          className="border-t p-6 bg-card/95 backdrop-blur-sm"
         >
           <div className="flex justify-between items-center">
             <div className="text-sm text-muted-foreground">

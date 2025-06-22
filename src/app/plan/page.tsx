@@ -76,13 +76,7 @@ export default function PlanPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      {/* Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/3 left-1/5 w-64 h-64 bg-primary/3 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/3 right-1/5 w-96 h-96 bg-secondary/3 rounded-full blur-3xl" />
-      </div>
-
+    <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="relative z-10 flex items-center justify-between p-6">
         <BrandLogo size={48} />
@@ -92,7 +86,7 @@ export default function PlanPage() {
       </div>
 
       {/* Main Content */}
-      <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-120px)] p-6">
+      <div className={`relative z-10 flex justify-center p-6 ${stage === 'followup' ? 'items-start pt-4' : 'items-center min-h-[calc(100vh-120px)]'}`}>
         <div className="w-full max-w-7xl">
           <AnimatePresence mode="wait">
             {stage === 'initial' && (
@@ -106,7 +100,7 @@ export default function PlanPage() {
               >
                 <Card className="w-full max-w-2xl shadow-2xl border-0 bg-card/80 backdrop-blur-sm">
                   <CardHeader className="text-center pb-8">
-                    <CardTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                    <CardTitle className="text-3xl font-bold text-primary">
                       Plan Your Next Trip with Columbus AI
                     </CardTitle>
                     <p className="text-muted-foreground mt-2">
@@ -239,7 +233,7 @@ export default function PlanPage() {
                       {/* Submit Button */}
                       <Button 
                         type="submit" 
-                        className="w-full text-lg py-6 bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:bg-gradient-to-r disabled:from-muted disabled:to-muted disabled:text-muted-foreground" 
+                        className="w-full text-lg py-6 bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:bg-muted disabled:text-muted-foreground" 
                         disabled={!destination || !startDate || !endDate || !budget || !travelers || !groupType || !travelStyle || !origin}
                       >
                         <Sparkles className="w-5 h-5 mr-2" />
@@ -264,7 +258,7 @@ export default function PlanPage() {
                 <Card className="w-full max-w-md text-center p-8 shadow-2xl border-0 bg-card/80 backdrop-blur-sm">
                   <CardContent className="space-y-6">
                     <div className="relative">
-                      <div className="w-20 h-20 mx-auto bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center">
+                      <div className="w-20 h-20 mx-auto bg-primary rounded-full flex items-center justify-center">
                         <Loader2 className="w-8 h-8 text-white animate-spin" />
                       </div>
                     </div>
@@ -289,8 +283,8 @@ export default function PlanPage() {
                 className="flex justify-center"
               >
                 <div className="w-full max-w-4xl">
-                  <div className="text-center mb-8">
-                    <h2 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent mb-2">
+                  <div className="text-center mb-4">
+                    <h2 className="text-3xl font-bold text-primary mb-2">
                       Let's Personalize Your Experience
                     </h2>
                     <p className="text-muted-foreground">
