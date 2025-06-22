@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
       },
     );
 
+    console.log("agentResponse", agentResponse);
     // 6. Return a normal JSON response instead of an event stream
     return new Response(JSON.stringify(agentResponse), {
       status: 200,

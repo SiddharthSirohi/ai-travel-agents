@@ -1,5 +1,6 @@
 "use client";
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,10 +8,24 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Calendar, Map, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { ChatInterface } from './chat/ChatInterface';
 import { TimelineCanvas } from './timeline/TimelineCanvas';
-import { MapCanvas } from './map/MapCanvas';
 import { TripSummaryBar } from './controls/TripSummaryBar';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+
+// Dynamically import MapCanvas with SSR disabled
+const MapCanvas = dynamic(() => import('./map/MapCanvas').then((mod) => mod.MapCanvas), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full p-4">
+      <div className="h-full flex items-center justify-center rounded-lg border">
+        <div className="text-center space-y-4">
+          <div className="text-4xl">🗺️</div>
+          <p className="text-muted-foreground">Loading map...</p>
+        </div>
+      </div>
+    </div>
+  ),
+});
 
 export function TravelCompanion() {
   const [activeTab, setActiveTab] = useState('timeline');

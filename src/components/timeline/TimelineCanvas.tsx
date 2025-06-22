@@ -3,11 +3,10 @@
 import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ThumbsUp, ThumbsDown, RefreshCw, MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTripStore } from '@/lib/store';
-import { ItineraryItem, AgentType } from '@/lib/types';
+import { ItineraryItem } from '@/lib/types';
 import { motion } from 'framer-motion';
-import { getAlternatives } from '@/lib/mock-api';
 import { format, addDays, startOfWeek, endOfWeek, isSameDay, parse, addMinutes } from 'date-fns';
 
 interface TimeBlock {
@@ -83,10 +82,9 @@ function TimeBlock({ block, onItemClick }: { block: TimeBlock; onItemClick: (ite
 }
 
 export function TimelineCanvas() {
-  const { itinerary, updateItineraryItem, addItineraryItem } = useTripStore();
+  const { itinerary } = useTripStore();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedItem, setSelectedItem] = useState<ItineraryItem | null>(null);
-  const [isLoadingAlternatives, setIsLoadingAlternatives] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'week' | 'day'>('week');
 
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -163,30 +161,7 @@ export function TimelineCanvas() {
     return { allDayBlocks: allDayItems, timedBlocks };
   };
 
-  const handleApprove = (id: string) => {
-    updateItineraryItem(id, { status: 'confirmed' });
-    setSelectedItem(null);
-  };
 
-  const handleReject = (id: string) => {
-    updateItineraryItem(id, { status: 'alternative' });
-    setSelectedItem(null);
-  };
-
-  const handleFindAlternative = async (id: string) => {
-    const item = itinerary.find(i => i.id === id);
-    if (!item) return;
-
-    setIsLoadingAlternatives(id);
-    try {
-      const alternatives = await getAlternatives(id, item.type as AgentType);
-      alternatives.forEach(alt => addItineraryItem(alt));
-    } catch (error) {
-      console.error('Failed to load alternatives:', error);
-    } finally {
-      setIsLoadingAlternatives(null);
-    }
-  };
 
   const navigateWeek = (direction: 'prev' | 'next') => {
     const daysToMove = viewMode === 'week' ? 7 : 1;
@@ -302,7 +277,7 @@ export function TimelineCanvas() {
         </div>
         {selectedItem && (
           <Dialog open={!!selectedItem} onOpenChange={(open) => !open && setSelectedItem(null)}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="flex items-center space-x-2">
                   <span>{getTypeIcon(selectedItem.type)}</span>
@@ -310,11 +285,18 @@ export function TimelineCanvas() {
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">{selectedItem.description}</p>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                {selectedItem.imageUrl && (
+                  <img 
+                    src={selectedItem.imageUrl} 
+                    alt={selectedItem.title} 
+                    className="w-full h-48 object-cover rounded-md max-w-full"
+                  />
+                )}
+                <p className="text-sm text-muted-foreground break-words">{selectedItem.description}</p>
+                <div className="grid grid-cols-1 gap-2 text-sm">
                   <div><span className="font-medium">Date:</span> {selectedItem.date}</div>
                   <div><span className="font-medium">Time:</span> {selectedItem.time}</div>
-                  <div><span className="font-medium">Location:</span> {selectedItem.location}</div>
+                  <div className="break-words"><span className="font-medium">Location:</span> {selectedItem.location}</div>
                   <div><span className="font-medium">Price:</span> {selectedItem.currency} {selectedItem.price}</div>
                 </div>
                 {selectedItem.details && Object.keys(selectedItem.details).length > 0 && (
@@ -322,19 +304,24 @@ export function TimelineCanvas() {
                     <h4 className="font-medium mb-2">Additional Details:</h4>
                     <div className="space-y-1 text-sm">
                       {Object.entries(selectedItem.details).map(([key, value]) => (
-                        <div key={key} className="flex justify-between">
-                          <span className="text-muted-foreground capitalize">{key.replace(/([A-Z])/g, ' $1')}:</span>
-                          <span>{Array.isArray(value) ? value.join(', ') : String(value)}</span>
+                        <div key={key} className="flex flex-col gap-1">
+                          <span className="text-muted-foreground capitalize font-medium">{key.replace(/([A-Z])/g, ' $1')}:</span>
+                          <span className="break-words">{Array.isArray(value) ? value.join(', ') : String(value)}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
-                <div className="flex space-x-2">
-                  <Button variant="outline" size="sm" onClick={() => handleApprove(selectedItem.id)} disabled={isLoadingAlternatives === selectedItem.id}><ThumbsUp className="w-4 h-4 mr-1" />Approve</Button>
-                  <Button variant="outline" size="sm" onClick={() => handleReject(selectedItem.id)} disabled={isLoadingAlternatives === selectedItem.id}><ThumbsDown className="w-4 h-4 mr-1" />Reject</Button>
-                  <Button variant="outline" size="sm" onClick={() => handleFindAlternative(selectedItem.id)} disabled={isLoadingAlternatives === selectedItem.id}><RefreshCw className={`w-4 h-4 mr-1 ${isLoadingAlternatives === selectedItem.id ? 'animate-spin' : ''}`} />Alternatives</Button>
-                </div>
+                {selectedItem.details?.urlLink && (
+                  <a 
+                    href={selectedItem.details.urlLink} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="inline-block text-sm text-primary hover:underline break-all"
+                  >
+                    View on Airbnb →
+                  </a>
+                )}
               </div>
             </DialogContent>
           </Dialog>

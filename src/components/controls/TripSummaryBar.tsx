@@ -45,6 +45,22 @@ interface HotelDay {
   hotel_info: HotelInfo;
 }
 
+interface Experience {
+  name: string;
+  startTime: string;
+  endTime: string;
+  imageUrl: string;
+  locationLatitude: number;
+  locationLongitude: number;
+  urlLink: string;
+}
+
+interface ExperienceDay {
+  date: string;
+  morningExperience?: Experience;
+  afternoonExperience?: Experience;
+}
+
 const convertTime12to24 = (time: string): string => {
   if (!time) return '00:00';
   const timeUpper = time.toUpperCase();
@@ -86,6 +102,19 @@ const getCoordinatesFromPlaceId = async (placeId: string): Promise<[number, numb
     console.error(`Error fetching coordinates for placeId ${placeId}:`, error);
     return undefined;
   }
+};
+
+const calculateDuration = (startTime: string, endTime: string): number => {
+  // Parse times in HH:mm format
+  const [startHours, startMinutes] = startTime.split(':').map(Number);
+  const [endHours, endMinutes] = endTime.split(':').map(Number);
+  
+  // Calculate total minutes from start of day
+  const startTotalMinutes = startHours * 60 + startMinutes;
+  const endTotalMinutes = endHours * 60 + endMinutes;
+  
+  // Calculate duration
+  return endTotalMinutes - startTotalMinutes;
 };
 
 export function TripSummaryBar() {
@@ -145,58 +174,212 @@ export function TripSummaryBar() {
       agentStatuses.forEach(agent => updateAgentStatus(agent.type, { status: 'completed' }));
       setIsTripGenerated(true);
       
-      const mealsByDays = data.response.messages[1].content[1].result.result.meals;
-      const hotelsByDays = data.response.messages[1].content[0].result.days;
+      console.log('Full API response structure:', data);
+      
+      // Log the messages structure to understand it better
+      console.log('Messages count:', data.response?.messages?.length);
+      data.response?.messages?.forEach((msg: any, index: number) => {
+        console.log(`Message ${index}:`, {
+          role: msg.role,
+          contentLength: msg.content?.length,
+          content: msg.content
+        });
+      });
 
-      console.log('Meals by days:', mealsByDays);
-      console.log('Hotels by days:', hotelsByDays);
-      console.log('Trip generation response:', data);
+      // Safely extract data with fallbacks
+      let hotelsByDays = [];
+      let mealsByDays = [];
+      let experiencesByDays = [];
 
-      const mealItems: ItineraryItem[] = mealsByDays.flatMap((day: MealDay) => {
-        const lunchItem: ItineraryItem = {
-          id: `${day.date}-lunch-${day.lunch.placeId}`,
-          type: 'meal',
-          title: day.lunch.name,
-          description: day.lunch.description,
-          date: day.date,
-          time: convertTime12to24(day.lunch.timeFrom),
-          duration: 120,
-          location: day.lunch.address,
-          coordinates: undefined, // Will be set after fetching from placeId
-          price: 0, // Or parse from priceRange
-          currency: 'USD',
-          status: 'confirmed',
-          rating: day.lunch.rating,
-          details: {
-            cuisine: day.lunch.cuisine,
-            priceRange: day.lunch.priceRange,
-            specialties: day.lunch.specialties,
-            placeId: day.lunch.placeId,
+      try {
+        hotelsByDays = data.response?.messages?.[1]?.content?.[0]?.result?.days || [];
+        console.log('Hotels extracted:', hotelsByDays);
+      } catch (e) {
+        console.error('Error extracting hotels:', e);
+      }
+
+      try {
+        // Look through all messages for meals data
+        for (let i = 0; i < data.response.messages.length; i++) {
+          const msg = data.response.messages[i];
+          // Skip if no content
+          if (!msg.content) continue;
+          
+          // Handle string content (tool call responses)
+          if (typeof msg.content === 'string') {
+            try {
+              const parsed = JSON.parse(msg.content);
+              if (parsed.meals) {
+                mealsByDays = parsed.meals;
+                console.log(`Found meals in messages[${i}] (string content)`);
+                break;
+              }
+              // Check for nested structure
+              if (parsed.result?.meals) {
+                mealsByDays = parsed.result.meals;
+                console.log(`Found meals in messages[${i}].result (string content)`);
+                break;
+              }
+            } catch (e) {
+              // Not JSON or doesn't contain meals
+            }
+          }
+          // Handle array content
+          else if (Array.isArray(msg.content)) {
+            for (let j = 0; j < msg.content.length; j++) {
+              if (msg.content[j]?.result?.meals) {
+                mealsByDays = msg.content[j].result.meals;
+                console.log(`Found meals in messages[${i}].content[${j}]`);
+                break;
+              }
+              // Check for nested result structure
+              if (msg.content[j]?.result?.result?.meals) {
+                mealsByDays = msg.content[j].result.result.meals;
+                console.log(`Found meals in messages[${i}].content[${j}].result.result`);
+                break;
+              }
+            }
+          }
+          if (mealsByDays.length > 0) break;
+        }
+        console.log('Meals extracted:', mealsByDays);
+      } catch (e) {
+        console.error('Error extracting meals:', e);
+      }
+
+            // Check if experiences exist in different locations
+      try {
+        // Look through all messages for experiences
+        for (let i = 0; i < data.response.messages.length; i++) {
+          const msg = data.response.messages[i];
+          // Skip if no content
+          if (!msg.content) continue;
+          
+          // Handle string content (tool call responses)
+          if (typeof msg.content === 'string') {
+            try {
+              const parsed = JSON.parse(msg.content);
+              if (parsed.experiences) {
+                experiencesByDays = parsed.experiences;
+                console.log(`Found experiences in messages[${i}] (string content)`);
+                break;
+              }
+            } catch (e) {
+              // Not JSON or doesn't contain experiences
+            }
+          }
+          // Handle array content
+          else if (Array.isArray(msg.content)) {
+            for (let j = 0; j < msg.content.length; j++) {
+              if (msg.content[j]?.result?.experiences) {
+                experiencesByDays = msg.content[j].result.experiences;
+                console.log(`Found experiences in messages[${i}].content[${j}]`);
+                break;
+              }
+            }
+          }
+          if (experiencesByDays.length > 0) break;
+        }
+        console.log('Experiences extracted:', experiencesByDays);
+      } catch (e) {
+        console.error('Error extracting experiences:', e);
+      }
+
+      // If no meals found and we have waypoints, create fallback meals
+      if (mealsByDays.length === 0 && experiencesByDays.length > 0) {
+        console.log('No meals found, creating fallback meals for each day');
+        mealsByDays = experiencesByDays.map((expDay: ExperienceDay) => ({
+          date: expDay.date,
+          lunch: {
+            name: 'Local Restaurant (Lunch)',
+            cuisine: 'Local',
+            rating: 4.0,
+            priceRange: '$$',
+            address: 'Local area restaurant',
+            description: 'Enjoy local cuisine for lunch',
+            specialties: ['Local specialties'],
+            placeId: `fallback-lunch-${expDay.date}`,
+            timeFrom: '12:00',
+            timeTo: '14:00'
           },
-        };
+          dinner: {
+            name: 'Local Restaurant (Dinner)',
+            cuisine: 'Local',
+            rating: 4.0,
+            priceRange: '$$',
+            address: 'Local area restaurant',
+            description: 'Enjoy local cuisine for dinner',
+            specialties: ['Local specialties'],
+            placeId: `fallback-dinner-${expDay.date}`,
+            timeFrom: '19:00',
+            timeTo: '21:00'
+          }
+        }));
+      }
 
-        const dinnerItem: ItineraryItem = {
-          id: `${day.date}-dinner-${day.dinner.placeId}`,
-          type: 'meal',
-          title: day.dinner.name,
-          description: day.dinner.description,
-          date: day.date,
-          time: convertTime12to24(day.dinner.timeFrom),
-          duration: 120,
-          location: day.dinner.address,
+      console.log('Final extracted data:', {
+        hotels: hotelsByDays.length,
+        meals: mealsByDays.length,
+        experiences: experiencesByDays.length
+      });
+
+      const mealItems: ItineraryItem[] = (mealsByDays || []).flatMap((day: MealDay) => {
+        const items: ItineraryItem[] = [];
+        
+        // Check if lunch exists and has required properties
+        if (day.lunch && day.lunch.name) {
+          const lunchItem: ItineraryItem = {
+            id: `${day.date}-lunch-${day.lunch.placeId || 'unknown'}`,
+            type: 'meal',
+            title: day.lunch.name,
+            description: day.lunch.description || 'Lunch venue',
+            date: day.date,
+            time: convertTime12to24(day.lunch.timeFrom || '12:00'),
+            duration: 120,
+            location: day.lunch.address || 'Address not available',
           coordinates: undefined, // Will be set after fetching from placeId
-          price: 0,
-          currency: 'USD',
-          status: 'confirmed',
-          rating: day.dinner.rating,
-          details: {
-            cuisine: day.dinner.cuisine,
-            priceRange: day.dinner.priceRange,
-            specialties: day.dinner.specialties,
-            placeId: day.dinner.placeId,
+            price: 0, // Or parse from priceRange
+            currency: 'USD',
+            status: 'confirmed',
+            rating: day.lunch.rating || 0,
+            details: {
+              cuisine: day.lunch.cuisine || 'Unknown',
+              priceRange: day.lunch.priceRange || '$$',
+              specialties: day.lunch.specialties || [],
+              placeId: day.lunch.placeId,
           },
-        };
-        return [lunchItem, dinnerItem];
+          };
+
+          items.push(lunchItem);
+        }
+        
+        // Check if dinner exists and has required properties
+        if (day.dinner && day.dinner.name) {
+          const dinnerItem: ItineraryItem = {
+            id: `${day.date}-dinner-${day.dinner.placeId || 'unknown'}`,
+            type: 'meal',
+            title: day.dinner.name,
+            description: day.dinner.description || 'Dinner venue',
+            date: day.date,
+            time: convertTime12to24(day.dinner.timeFrom || '19:00'),
+            duration: 120,
+            location: day.dinner.address || 'Address not available',
+          coordinates: undefined, // Will be set after fetching from placeId
+            price: 0,
+            currency: 'USD',
+            status: 'confirmed',
+            rating: day.dinner.rating || 0,
+            details: {
+              cuisine: day.dinner.cuisine || 'Unknown',
+              priceRange: day.dinner.priceRange || '$$',
+              specialties: day.dinner.specialties || [],
+              placeId: day.dinner.placeId,
+          },
+          };
+          items.push(dinnerItem);
+        }
+        
+        return items;
       });
 
       const hotelItems: ItineraryItem[] = (hotelsByDays || []).map((day: HotelDay) => {
@@ -221,27 +404,68 @@ export function TripSummaryBar() {
         };
       });
 
-      // Fetch coordinates for meal items using their placeIds
-      const mealItemsWithCoords = await Promise.all(
-        mealItems.map(async (item) => {
-          const placeId = item.details.placeId;
-          console.log(`Processing meal item: ${item.title}, placeId: ${placeId}`);
-          if (placeId) {
-            const coordinates = await getCoordinatesFromPlaceId(placeId);
-            console.log(`Coordinates for ${item.title}:`, coordinates);
-            return { ...item, coordinates };
-          }
-          console.log(`No placeId for meal: ${item.title}`);
-          return item;
-        })
-      );
+      // Parse experiences
+      const experienceItems: ItineraryItem[] = (experiencesByDays || []).flatMap((day: ExperienceDay) => {
+        const items: ItineraryItem[] = [];
+        
+        if (day.morningExperience) {
+          const exp = day.morningExperience;
+          const duration = calculateDuration(exp.startTime, exp.endTime);
+          items.push({
+            id: `${day.date}-morning-experience-${exp.name.replace(/\s+/g, '-')}`,
+            type: 'activity',
+            title: exp.name,
+            description: 'Morning experience',
+            date: day.date,
+            time: exp.startTime,
+            duration: duration,
+            location: `${exp.locationLatitude}, ${exp.locationLongitude}`,
+            coordinates: [exp.locationLatitude, exp.locationLongitude],
+            price: 0, // Price not available in the data
+            currency: 'USD',
+            status: 'confirmed',
+            imageUrl: exp.imageUrl,
+            details: {
+              urlLink: exp.urlLink,
+              timeSlot: 'morning',
+              startTime: exp.startTime,
+              endTime: exp.endTime
+            }
+          });
+        }
+        
+        if (day.afternoonExperience) {
+          const exp = day.afternoonExperience;
+          const duration = calculateDuration(exp.startTime, exp.endTime);
+          items.push({
+            id: `${day.date}-afternoon-experience-${exp.name.replace(/\s+/g, '-')}`,
+            type: 'activity',
+            title: exp.name,
+            description: 'Afternoon experience',
+            date: day.date,
+            time: exp.startTime,
+            duration: duration,
+            location: `${exp.locationLatitude}, ${exp.locationLongitude}`,
+            coordinates: [exp.locationLatitude, exp.locationLongitude],
+            price: 0, // Price not available in the data
+            currency: 'USD',
+            status: 'confirmed',
+            imageUrl: exp.imageUrl,
+            details: {
+              urlLink: exp.urlLink,
+              timeSlot: 'afternoon',
+              startTime: exp.startTime,
+              endTime: exp.endTime
+            }
+          });
+        }
+        
+        return items;
+      });
 
-      console.log('Final meal items with coordinates:', mealItemsWithCoords);
-      console.log('Meal items with valid coordinates:', mealItemsWithCoords.filter(item => item.coordinates));
-      console.log('Meal items without coordinates:', mealItemsWithCoords.filter(item => !item.coordinates));
-      console.log('Final hotel items:', hotelItems);
-      
-      setItinerary([...mealItemsWithCoords, ...hotelItems]);
+      setItinerary([...mealItems, ...hotelItems, ...experienceItems]);
+
+      console.log("data", data);
 
     } catch (error) {
       console.error('An error occurred while generating the trip:', error);
