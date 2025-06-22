@@ -117,10 +117,10 @@ export function TravelCompanion() {
                 className="flex-shrink-0 border-l bg-card/50 overflow-hidden"
               >
                 <div className="w-96 h-full flex flex-col">
-                  <div className="border-b px-6 py-3 bg-card/50">
+                  <div className="border-b px-6 py-3 sticky top-0 z-10 bg-white">
                     <div className="flex items-center justify-between">
                       <div className="h-9 flex items-center">
-                        <h2 className="font-semibold">Ask Columbus AI about your itinerary</h2>
+                        <h2 className="font-semibold">Talk to Columbus AI</h2>
                       </div>
                       <Button
                         variant="outline"

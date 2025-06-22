@@ -1,6 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import { Client } from "@googlemaps/google-maps-services-js";
+import { Client, Place } from "@googlemaps/google-maps-services-js";
 import { generateStructured } from "../../lib/llm-utils";
 
 const googleMapsClient = new Client({});
@@ -31,7 +31,7 @@ function mapPriceLevel(priceLevel?: number): string {
   }
 }
 
-async function enhanceRestaurantWithLLM(restaurantData: Record<string, unknown>): Promise<{
+async function enhanceRestaurantWithLLM(restaurantData: Place): Promise<{
   cuisine: string;
   description: string;
   specialties: string[];
@@ -44,9 +44,9 @@ async function enhanceRestaurantWithLLM(restaurantData: Record<string, unknown>)
 
   const prompt = `You are a culinary expert. Summarise the following restaurant information into a short JSON object with fields cuisine, description and specialties (3-4 dishes). Return JSON only.
 
-Name: ${(restaurantData as any).name}
-Types: ${Array.isArray((restaurantData as any).types) ? (restaurantData as any).types.join(', ') : 'N/A'}
-Rating: ${(restaurantData as any).rating || 'N/A'}`;
+Name: ${restaurantData.name}
+Types: ${Array.isArray(restaurantData.types) ? restaurantData.types.join(', ') : 'N/A'}
+Rating: ${restaurantData.rating || 'N/A'}`;
   
   try {
     const result = await generateStructured(schema, prompt, { temperature: 0.25 });
@@ -76,7 +76,7 @@ export const editRestaurantTool = createTool({
 
   execute: async ({ context: input }) => {
     const { message, currentItinerary } = input;
-
+    console.log("currentItinerary", currentItinerary);
     // Step 1: Use LLM to understand the user's request
     const analysisPrompt = `Analyze the user's request to modify their travel itinerary. Based on their message, determine the search query, the day to modify, the meal type, and the action to perform.
     
@@ -106,7 +106,6 @@ export const editRestaurantTool = createTool({
       console.error("Failed to analyze user's request.");
       return currentItinerary; // Return original itinerary if analysis fails
     }
-    console.log("LLM Analysis Result:", analysis);
 
 
     // Step 2: Search Google Maps using the generated query
@@ -116,7 +115,7 @@ export const editRestaurantTool = createTool({
       return currentItinerary;
     }
 
-    let places: any[] = [];
+    let places: Place[] = [];
     try {
       const response = await googleMapsClient.textSearch({
         params: { query: analysis.searchQuery, key: apiKey },
@@ -135,7 +134,7 @@ export const editRestaurantTool = createTool({
     }
 
     const newPlace = places[0]; // Take the top result
-    console.log("Found new place on Google Maps:", newPlace.name);
+
 
     // Step 3: Enhance the new place data
     const enhancedData = await enhanceRestaurantWithLLM(newPlace);
@@ -160,21 +159,62 @@ export const editRestaurantTool = createTool({
     // Step 5: Modify the itinerary robustly
     const updatedItinerary = JSON.parse(JSON.stringify(currentItinerary)); // Deep copy to prevent side effects
 
-    // The most common structure will have a `meals` array. We'll check for that first.
-    if (updatedItinerary.meals && Array.isArray(updatedItinerary.meals) && updatedItinerary.meals[analysis.dayIndex]) {
-      const dayToUpdate = updatedItinerary.meals[analysis.dayIndex];
+    console.log("updatedItinerary", updatedItinerary);
+    console.log("dayIndex", analysis.dayIndex);
+    console.log("mealType", analysis.mealType);
 
-      // Ensure the meal type ('lunch' or 'dinner') exists on the object before replacing
-      if (analysis.mealType in dayToUpdate) {
-        dayToUpdate[analysis.mealType] = newRestaurant;
-        console.log(`Successfully replaced '${analysis.mealType}' on day index ${analysis.dayIndex} with '${newRestaurant.name}'.`);
+    // Filter meals and calculate the target index
+    if (Array.isArray(updatedItinerary)) {
+      const meals = updatedItinerary.filter(item => item.type === "meal");
+      const targetIndex = (analysis.dayIndex * 2) + (analysis.mealType === "dinner" ? 1 : 0);
+
+      if (targetIndex >= 0 && targetIndex < meals.length) {
+        // Create the new meal item
+        const mealDate = currentItinerary[targetIndex]?.date || new Date().toISOString().split('T')[0];
+        const mealTime = analysis.mealType === 'lunch' ? '12:00' : '20:00';
+        
+        const newMeal = {
+          id: `${mealDate}-${analysis.mealType}-${newPlace.place_id}`,
+          type: "meal",
+          title: newPlace.name,
+          description: enhancedData.description,
+          date: mealDate,
+          time: mealTime,
+          duration: 120, // 2 hours for meals
+          location: newPlace.formatted_address,
+          price: 0,
+          currency: "USD",
+          status: "confirmed",
+          rating: newPlace.rating || 0,
+          details: {
+            cuisine: enhancedData.cuisine,
+            priceRange: mapPriceLevel(newPlace.price_level),
+            specialties: enhancedData.specialties,
+            placeId: newPlace.place_id
+          }
+        };
+
+        // Find the index in the original array that corresponds to our target meal
+        const originalIndex = updatedItinerary.findIndex((item, idx) => {
+          if (item.type !== "meal") return false;
+          const mealIndex = updatedItinerary.slice(0, idx).filter(i => i.type === "meal").length;
+          return mealIndex === targetIndex;
+        });
+
+        if (originalIndex !== -1) {
+          updatedItinerary[originalIndex] = newMeal;
+          console.log(`Successfully replaced ${analysis.mealType} on day index ${analysis.dayIndex} with '${newRestaurant.name}'`);
+        } else {
+          console.error(`Cannot update: Could not find the meal at calculated index ${targetIndex}`);
+          return currentItinerary;
+        }
       } else {
-        console.error(`Cannot update: Meal type '${analysis.mealType}' not found for day index ${analysis.dayIndex}.`);
+        console.error(`Cannot update: Invalid target index ${targetIndex} for meals array of length ${meals.length}`);
         return currentItinerary;
       }
     } else {
-      console.error(`Cannot update: Could not find a valid 'meals' array or a day at index ${analysis.dayIndex}.`);
-      return currentItinerary; // Return original if the structure is not as expected
+      console.error("Cannot update: Itinerary is not an array");
+      return currentItinerary;
     }
     
     return updatedItinerary;

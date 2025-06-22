@@ -12,6 +12,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 export function ChatInterface() {
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState('');
   
   const { 
     chatMessages, 
@@ -29,7 +31,7 @@ export function ChatInterface() {
   }, [chatMessages]);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || isProcessing) return;
 
     const userMessage = inputValue.trim();
     setInputValue('');
@@ -38,6 +40,22 @@ export function ChatInterface() {
       role: 'user',
       content: userMessage,
     });
+    setIsProcessing(true);
+
+    const thinkingMessages = [
+      "Understanding your feedback...",
+      "Figuring out the right tool for the job...",
+      "Searching for new options...",
+      "Finalizing the details...",
+    ];
+
+    let messageIndex = 0;
+    setProcessingMessage(thinkingMessages[messageIndex]);
+    
+    const intervalId = setInterval(() => {
+      messageIndex = (messageIndex + 1) % thinkingMessages.length;
+      setProcessingMessage(thinkingMessages[messageIndex]);
+    }, 2000);
 
     try {
       const response = await fetch('/api/trip/feedback', {
@@ -79,6 +97,9 @@ export function ChatInterface() {
         role: 'assistant',
         content: 'I encountered an issue while processing your request. Please try again.',
       });
+    } finally {
+      clearInterval(intervalId);
+      setIsProcessing(false);
     }
   };
 
@@ -141,6 +162,26 @@ export function ChatInterface() {
           ))}
         </AnimatePresence>
 
+        {isProcessing && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-start"
+          >
+            <div className="flex items-start space-x-2 max-w-[80%]">
+              <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-secondary text-secondary-foreground">
+                <Bot className="w-4 h-4" />
+              </div>
+              <Card className="p-3 bg-card">
+                <div className="flex items-center space-x-2 text-sm">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                  <span>{processingMessage}</span>
+                </div>
+              </Card>
+            </div>
+          </motion.div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -153,10 +194,11 @@ export function ChatInterface() {
             placeholder="Ask Columbus AI about flights, hotels, restaurants, or activities..."
             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
             className="flex-1"
+            disabled={isProcessing}
           />
           <Button 
             onClick={handleSendMessage} 
-            disabled={!inputValue.trim()}
+            disabled={!inputValue.trim() || isProcessing}
             size="icon"
           >
             <Send className="w-4 h-4" />
