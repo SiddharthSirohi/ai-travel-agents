@@ -83,7 +83,7 @@ const initialState: TripState = {
     {
       id: 'welcome-msg',
       role: 'assistant',
-      content: 'Welcome! Tell me about your dream trip to get started.',
+      content: "I hope you like the itinerary! Let me know if you need any help or want to make changes.",
       timestamp: new Date().toISOString(),
     },
   ],

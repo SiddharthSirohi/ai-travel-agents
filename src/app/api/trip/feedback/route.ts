@@ -3,7 +3,16 @@ import { z } from 'zod';
 import { mastra } from '@/mastra';
 // import { Itinerary } from '@/lib/types'; // Assuming types are defined here
 
-
+/**
+ * Cleans the agent's text response by removing markdown JSON formatting.
+ * @param text The raw text response from the agent.
+ * @returns A clean JSON string.
+ */
+function cleanAgentResponse(text: string): string {
+  // Removes ```json ... ``` and any leading/trailing whitespace.
+  const cleanedText = text.replace(/```json\n?|\n?```/g, '').trim();
+  return cleanedText;
+}
 
 const feedbackRequestSchema = z.object({
   message: z.string(),
@@ -53,7 +62,8 @@ export async function POST(req: NextRequest) {
     if (!agentResponse.text) {
       throw new Error('Agent did not return a text response.');
     }
-    const updatedItinerary = JSON.parse(agentResponse.text);
+    const cleanedResponse = cleanAgentResponse(agentResponse.text);
+    const updatedItinerary = JSON.parse(cleanedResponse);
 
     console.log("updatedItinerary", updatedItinerary);
 
