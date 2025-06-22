@@ -60,6 +60,32 @@ const convertTime12to24 = (time: string): string => {
   return `${String(hours).padStart(2, '0')}:00`;
 };
 
+// Function to get coordinates from Google Places API using placeId
+const getCoordinatesFromPlaceId = async (placeId: string): Promise<[number, number] | undefined> => {
+  if (!placeId) return undefined;
+  
+  try {
+    const response = await fetch(`/api/places/${placeId}`);
+    if (!response.ok) {
+      console.warn(`Failed to fetch coordinates for placeId: ${placeId}, status: ${response.status}`);
+      const errorText = await response.text();
+      console.warn(`Error response:`, errorText);
+      return undefined;
+    }
+    
+    const data = await response.json();
+    console.log(`API response for placeId ${placeId}:`, data);
+    if (data.coordinates) {
+      return [data.coordinates.lat, data.coordinates.lng];
+    }
+    console.warn(`No coordinates in response for placeId: ${placeId}`);
+    return undefined;
+  } catch (error) {
+    console.error(`Error fetching coordinates for placeId ${placeId}:`, error);
+    return undefined;
+  }
+};
+
 export function TripSummaryBar() {
   const { destination, dates, preferences, agentStatuses, setItinerary } = useTripStore();
 
@@ -115,11 +141,6 @@ export function TripSummaryBar() {
       console.log('Trip generation response:', data);
 
       const mealItems: ItineraryItem[] = mealsByDays.flatMap((day: MealDay) => {
-        const lunchCoordsStr = day.lunch.location;
-        const lunchCoords = lunchCoordsStr?.includes(',')
-          ? (lunchCoordsStr.split(',').map(Number) as [number, number])
-          : undefined;
-
         const lunchItem: ItineraryItem = {
           id: `${day.date}-lunch-${day.lunch.placeId}`,
           type: 'meal',
@@ -129,7 +150,7 @@ export function TripSummaryBar() {
           time: convertTime12to24(day.lunch.timeFrom),
           duration: 120,
           location: day.lunch.address,
-          coordinates: lunchCoords,
+          coordinates: undefined, // Will be set after fetching from placeId
           price: 0, // Or parse from priceRange
           currency: 'USD',
           status: 'confirmed',
@@ -138,13 +159,9 @@ export function TripSummaryBar() {
             cuisine: day.lunch.cuisine,
             priceRange: day.lunch.priceRange,
             specialties: day.lunch.specialties,
+            placeId: day.lunch.placeId,
           },
         };
-
-        const dinnerCoordsStr = day.dinner.location;
-        const dinnerCoords = dinnerCoordsStr?.includes(',')
-          ? (dinnerCoordsStr.split(',').map(Number) as [number, number])
-          : undefined;
 
         const dinnerItem: ItineraryItem = {
           id: `${day.date}-dinner-${day.dinner.placeId}`,
@@ -155,7 +172,7 @@ export function TripSummaryBar() {
           time: convertTime12to24(day.dinner.timeFrom),
           duration: 120,
           location: day.dinner.address,
-          coordinates: dinnerCoords,
+          coordinates: undefined, // Will be set after fetching from placeId
           price: 0,
           currency: 'USD',
           status: 'confirmed',
@@ -164,6 +181,7 @@ export function TripSummaryBar() {
             cuisine: day.dinner.cuisine,
             priceRange: day.dinner.priceRange,
             specialties: day.dinner.specialties,
+            placeId: day.dinner.placeId,
           },
         };
         return [lunchItem, dinnerItem];
@@ -191,7 +209,27 @@ export function TripSummaryBar() {
         };
       });
 
-      setItinerary([...mealItems, ...hotelItems]);
+      // Fetch coordinates for meal items using their placeIds
+      const mealItemsWithCoords = await Promise.all(
+        mealItems.map(async (item) => {
+          const placeId = item.details.placeId;
+          console.log(`Processing meal item: ${item.title}, placeId: ${placeId}`);
+          if (placeId) {
+            const coordinates = await getCoordinatesFromPlaceId(placeId);
+            console.log(`Coordinates for ${item.title}:`, coordinates);
+            return { ...item, coordinates };
+          }
+          console.log(`No placeId for meal: ${item.title}`);
+          return item;
+        })
+      );
+
+      console.log('Final meal items with coordinates:', mealItemsWithCoords);
+      console.log('Meal items with valid coordinates:', mealItemsWithCoords.filter(item => item.coordinates));
+      console.log('Meal items without coordinates:', mealItemsWithCoords.filter(item => !item.coordinates));
+      console.log('Final hotel items:', hotelItems);
+      
+      setItinerary([...mealItemsWithCoords, ...hotelItems]);
 
     } catch (error) {
       console.error('An error occurred while generating the trip:', error);

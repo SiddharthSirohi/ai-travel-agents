@@ -97,7 +97,7 @@ export function TimelineCanvas() {
     if(viewMode === 'week') {
       start = weekStart;
     }
-    const dayCount = viewMode === 'week' ? 4 : 1;
+    const dayCount = viewMode === 'week' ? 7 : 1;
     for (let i = 0; i < dayCount; i++) {
       days.push(addDays(start, i));
     }
@@ -189,7 +189,7 @@ export function TimelineCanvas() {
   };
 
   const navigateWeek = (direction: 'prev' | 'next') => {
-    const daysToMove = viewMode === 'week' ? 4 : 1;
+    const daysToMove = viewMode === 'week' ? 7 : 1;
     setSelectedDate(current => addDays(current, direction === 'next' ? daysToMove : -daysToMove));
   };
 
@@ -204,7 +204,7 @@ export function TimelineCanvas() {
               </Button>
               <h2 className="text-lg font-semibold min-w-[200px] text-center">
                 {viewMode === 'week' 
-                  ? `${format(weekStart, 'MMM d')} - ${format(endOfWeek(addDays(weekStart, 3)), 'MMM d, yyyy')}`
+                  ? `${format(weekStart, 'MMM d')} - ${format(addDays(weekStart, 6), 'MMM d, yyyy')}`
                   : format(selectedDate, 'EEEE, MMMM d, yyyy')
                 }
               </h2>
@@ -227,53 +227,76 @@ export function TimelineCanvas() {
         </div>
 
         <div className="flex-1 flex overflow-hidden">
-          <div className="w-16 text-xs text-center text-muted-foreground pt-[calc(3rem+1px)]">
-            {hours.map(hour => (
-              <div key={hour} className="h-[60px] flex items-center justify-center border-t">
-                {hour > 0 ? format(new Date(0, 0, 0, hour), 'ha') : ''}
-              </div>
-            ))}
-          </div>
           <div className="flex-1 overflow-auto">
-            <div className={`sticky top-0 z-10 grid bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${viewMode === 'week' ? 'grid-cols-4' : 'grid-cols-1'}`}>
-              {weekDays.map(day => (
-                <div key={day.toISOString()} className="p-2 text-center border-l">
-                  <div className="text-xs text-muted-foreground">{format(day, 'EEE')}</div>
-                  <div className={`text-lg font-semibold ${isSameDay(day, new Date()) ? 'text-primary' : ''}`}>
-                    {format(day, 'd')}
+            <div className="relative">
+              {/* Sticky header with days */}
+              <div className={`sticky top-0 left-0 z-20 flex bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60`}>
+                <div className="w-16 flex-shrink-0 sticky left-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-r">
+                  <div className="h-[calc(3rem+1px)]"></div>
+                </div>
+                <div className={`flex-1 grid ${viewMode === 'week' ? 'grid-cols-7' : 'grid-cols-1'}`}>
+                  {weekDays.map(day => (
+                    <div key={day.toISOString()} className="p-2 text-center border-l">
+                      <div className="text-xs text-muted-foreground">{format(day, 'EEE')}</div>
+                      <div className={`text-lg font-semibold ${isSameDay(day, new Date()) ? 'text-primary' : ''}`}>
+                        {format(day, 'd')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Main content area */}
+              <div className="flex">
+                {/* Hour column - sticky */}
+                <div className="w-16 flex-shrink-0 sticky left-0 z-10 bg-background border-r">
+                  <div className="h-12 border-b"></div> {/* Spacer to match all-day events height */}
+                  <div className="text-xs text-center text-muted-foreground">
+                    {hours.map(hour => (
+                      <div key={hour} className="h-[60px] flex items-center justify-center border-t">
+                        {hour > 0 ? format(new Date(0, 0, 0, hour), 'ha') : ''}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-            <div className={`grid ${viewMode === 'week' ? 'grid-cols-4' : 'grid-cols-1'} min-h-full`}>
-              {weekDays.map(day => {
-                const { allDayBlocks, timedBlocks } = processItemsForDay(day);
-                return (
-                  <div key={day.toISOString()} className="relative border-l min-h-full">
-                    <div className="h-12 border-b p-1 space-y-1 overflow-y-auto">
-                      {allDayBlocks.map(item => (
-                        <div
-                          key={item.id}
-                          onClick={() => setSelectedItem(item)}
-                          className={`p-1 rounded text-xs truncate cursor-pointer ${getTypeColor(item.type)}`}
-                        >
-                          {item.title}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="absolute inset-0 top-12 pointer-events-none">
-                      {hours.map(hour => (
-                        <div key={hour} className="h-[60px] border-b"></div>
-                      ))}
-                    </div>
-                    <div className="absolute inset-0 top-12">
-                      {timedBlocks.map(block => (
-                        <TimeBlock key={block.item.id} block={block} onItemClick={setSelectedItem} />
-                      ))}
-                    </div>
+
+                {/* Calendar grid */}
+                <div className="flex-1 relative">
+                  {/* Horizontal grid lines spanning full width */}
+                  <div className="absolute inset-0 top-12 pointer-events-none">
+                    {hours.map(hour => (
+                      <div key={hour} className="h-[60px] border-t"></div>
+                    ))}
                   </div>
-                );
-              })}
+
+                  {/* Day columns */}
+                  <div className={`relative grid ${viewMode === 'week' ? 'grid-cols-7' : 'grid-cols-1'} min-h-full`}>
+                    {weekDays.map(day => {
+                      const { allDayBlocks, timedBlocks } = processItemsForDay(day);
+                      return (
+                        <div key={day.toISOString()} className="relative border-l min-h-full">
+                          <div className="h-12 border-b p-1 space-y-1 overflow-y-auto">
+                            {allDayBlocks.map(item => (
+                              <div
+                                key={item.id}
+                                onClick={() => setSelectedItem(item)}
+                                className={`p-1 rounded text-xs truncate cursor-pointer ${getTypeColor(item.type)}`}
+                              >
+                                {item.title}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="absolute inset-0 top-12">
+                            {timedBlocks.map(block => (
+                              <TimeBlock key={block.item.id} block={block} onItemClick={setSelectedItem} />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

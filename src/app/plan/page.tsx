@@ -13,34 +13,36 @@ import { FollowupQuestions } from '@/components/FollowupQuestions';
 import { BrandLogo } from '@/components/BrandLogo';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { mockDestinations } from '@/lib/mock-api';
 
 export default function PlanPage() {
   const router = useRouter();
   const {
-    destination: storeDest,
-    dates: storeDates,
-    preferences: storePrefs,
     setDestination,
     setDates,
     updatePreferences,
   } = useTripStore();
 
-  const [origin, setOrigin] = useState<TripDestination | null>(null);
-  const [destination, setDestinationState] = useState<TripDestination | null>(storeDest);
-  const [startDate, setStartDate] = useState(storeDates?.startDate || '');
-  const [endDate, setEndDate] = useState(storeDates?.endDate || '');
-  const [budget, setBudget] = useState<'budget' | 'moderate' | 'luxury'>(storePrefs.budget);
-  const [travelers, setTravelers] = useState(storePrefs.travelers);
-  const [travelStyle, setTravelStyle] = useState<'adventure' | 'chill' | 'luxury'>(storePrefs.style);
-  const [groupType, setGroupType] = useState<'solo' | 'couple' | 'family' | 'friends'>(storePrefs.groupType || 'solo');
+  // Default "From" to Bengaluru; other fields start empty / unselected
+  const defaultOrigin = mockDestinations.find((d) => d.name === 'Bengaluru') || null;
+
+  const [origin, setOrigin] = useState<TripDestination | null>(defaultOrigin);
+  const [destination, setDestinationState] = useState<TripDestination | null>(null);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [budget, setBudget] = useState<'' | 'budget' | 'moderate' | 'luxury'>('');
+  const [travelers, setTravelers] = useState<number | ''>('');
+  const [travelStyle, setTravelStyle] = useState<'' | 'adventure' | 'chill' | 'luxury'>('');
+  const [groupType, setGroupType] = useState<'' | 'solo' | 'couple' | 'family' | 'friends'>('');
   const [stage, setStage] = useState<'initial' | 'processing' | 'followup'>('initial');
 
-  // Ensure only "Solo" is selectable when there's exactly one traveler
   useEffect(() => {
-    if (travelers === 1 && groupType !== 'solo') {
+    const travelerCount = typeof travelers === 'number' ? travelers : Number(travelers);
+
+    if (travelerCount === 1 && groupType && groupType !== 'solo') {
       setGroupType('solo');
     }
-    if (travelers > 1 && groupType === 'solo') {
+    if (travelerCount > 1 && groupType === 'solo') {
       setGroupType('couple'); // Default to couple when switching from solo
     }
   }, [travelers, groupType]);
@@ -52,7 +54,12 @@ export default function PlanPage() {
     // Persist to store
     setDestination(destination);
     setDates({ startDate, endDate });
-    updatePreferences({ budget, travelers, style: travelStyle, groupType });
+    updatePreferences({ 
+      budget: budget as any, 
+      travelers: typeof travelers === 'number' ? travelers : Number(travelers), 
+      style: travelStyle as any, 
+      groupType: groupType as any 
+    });
 
     // Show processing state
     setStage('processing');
@@ -163,7 +170,7 @@ export default function PlanPage() {
                               { value: 'luxury',   label: 'Luxury • ₹200K+',      subtitle: '₹200K+' },
                             ]}
                             value={budget}
-                            onValueChange={(val) => setBudget(val as 'budget' | 'moderate' | 'luxury')}
+                            onValueChange={(val) => setBudget(val as any)}
                             className="w-full"
                           />
                         </div>
@@ -172,8 +179,12 @@ export default function PlanPage() {
                           <Input 
                             type="number" 
                             min={1} 
-                            value={travelers} 
-                            onChange={(e) => setTravelers(Number(e.target.value))}
+                            value={travelers}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTravelers(val === '' ? '' : Number(val));
+                            }}
+                            placeholder="Number of travelers"
                             className="w-full"
                           />
                         </div>
@@ -190,8 +201,9 @@ export default function PlanPage() {
                               { value: 'family', label: 'Family' },
                               { value: 'friends', label: 'Friends' },
                             ] as const;
+                            const travelerCountRender = typeof travelers === 'number' ? travelers : Number(travelers);
                             let options;
-                            if (travelers === 1) {
+                            if (travelerCountRender === 1) {
                               // Only Solo available when 1 traveler
                               options = baseOptions.filter((opt) => opt.value === 'solo');
                             } else {
@@ -218,6 +230,7 @@ export default function PlanPage() {
                             ]}
                             value={travelStyle}
                             onValueChange={(val) => setTravelStyle(val as any)}
+                            placeholder="Select travel style"
                             className="w-full"
                           />
                         </div>
