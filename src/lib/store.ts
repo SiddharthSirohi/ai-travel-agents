@@ -23,7 +23,7 @@ interface TripStore extends TripState {
 const initialAgentStatuses: AgentStatus[] = [
   {
     type: 'flights',
-    name: 'Flight Agent',
+    name: 'Transport Agent',
     emoji: '✈️',
     status: 'idle',
     lastUpdate: new Date().toISOString(),

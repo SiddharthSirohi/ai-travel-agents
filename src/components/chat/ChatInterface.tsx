@@ -11,20 +11,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 export function ChatInterface() {
   const [inputValue, setInputValue] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [streamingMessage, setStreamingMessage] = useState('');
-  const [currentStreamingMessageId, setCurrentStreamingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { 
     chatMessages, 
     addChatMessage, 
-    startPlanning, 
-    stopPlanning,
-    isPlanning,
-    preferences,
-    destination,
-    dates
+    itinerary,
+    setItinerary,
   } = useTripStore();
 
   const scrollToBottom = () => {
@@ -33,7 +26,7 @@ export function ChatInterface() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [chatMessages, streamingMessage]);
+  }, [chatMessages]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
@@ -41,135 +34,51 @@ export function ChatInterface() {
     const userMessage = inputValue.trim();
     setInputValue('');
     
-    // Add user message
     addChatMessage({
       role: 'user',
       content: userMessage,
     });
 
-    setIsTyping(true);
-    startPlanning();
-
     try {
-      // Create a temporary message for streaming
-      const tempMessageId = `streaming-${Date.now()}`;
-      setCurrentStreamingMessageId(tempMessageId);
-      setStreamingMessage('');
-
-      // Add initial assistant message
-      addChatMessage({
-        role: 'assistant',
-        content: 'Let me help you plan your trip. I\'m gathering information from our travel agents...',
-      });
-
-      // Prepare the request payload
-      const requestPayload = {
-        message: userMessage,
-        preferences: {
-          ...preferences,
-          destination: destination?.name || 'Not specified',
-          startDate: dates?.startDate || '',
-          endDate: dates?.endDate || '',
+      const response = await fetch('/api/trip/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      };
-
-             // Make streaming request to API
-       // Use the test endpoint if no preferences are set, otherwise use the full trip endpoint
-       const endpoint = (!destination?.name && !dates?.startDate) ? '/api/chat' : '/api/trip';
-       const payload = endpoint === '/api/chat' ? { message: userMessage } : requestPayload;
-
-       const response = await fetch(endpoint, {
-         method: 'POST',
-         headers: {
-           'Content-Type': 'application/json',
-         },
-         body: JSON.stringify(payload),
-       });
+        body: JSON.stringify({
+          message: userMessage,
+          currentItinerary: itinerary,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
+ 
+      const result = await response.json();
 
-      if (!response.body) {
-        throw new Error('No response body');
-      }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let accumulatedContent = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              
-              if (data === '[DONE]') {
-                break;
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                
-                // Handle different types of streaming data
-                if (parsed.type === 'text_delta' && parsed.text_delta?.content) {
-                  accumulatedContent += parsed.text_delta.content;
-                  setStreamingMessage(accumulatedContent);
-                } else if (parsed.type === 'text' && parsed.text) {
-                  accumulatedContent += parsed.text;
-                  setStreamingMessage(accumulatedContent);
-                } else if (parsed.content) {
-                  // Handle direct content
-                  accumulatedContent += parsed.content;
-                  setStreamingMessage(accumulatedContent);
-                }
-                             } catch {
-                 // Handle non-JSON data (plain text chunks)
-                 if (data && data !== 'undefined') {
-                   accumulatedContent += data;
-                   setStreamingMessage(accumulatedContent);
-                 }
-               }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-
-      // Add the final complete message
-      if (accumulatedContent.trim()) {
+      if (result.updatedItinerary) {
+        console.log("old itinerary", itinerary);
+        console.log("new itinerary", result.updatedItinerary);
+        setItinerary(result.updatedItinerary);
         addChatMessage({
           role: 'assistant',
-          content: accumulatedContent.trim(),
+          content: "I've updated your itinerary. Take a look!",
         });
       } else {
         addChatMessage({
           role: 'assistant',
-          content: 'I\'ve finished processing your request. Check your itinerary for the results!',
+          content: "I've processed your request but I'm unable to update the itinerary. Please try again.",
         });
       }
-
+ 
     } catch (error) {
-      console.error('Streaming error:', error);
+      console.error('API request error:', error);
       addChatMessage({
         role: 'assistant',
-        content: 'I encountered an issue while processing your request. Please try again or check your connection.',
+        content: 'I encountered an issue while processing your request. Please try again.',
       });
-    } finally {
-      setIsTyping(false);
-      setStreamingMessage('');
-      setCurrentStreamingMessageId(null);
-      stopPlanning();
     }
   };
 
@@ -232,54 +141,6 @@ export function ChatInterface() {
           ))}
         </AnimatePresence>
 
-        {/* Streaming message */}
-        {streamingMessage && currentStreamingMessageId && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-start"
-          >
-            <div className="flex items-start space-x-2 max-w-[80%]">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center">
-                <Bot className="w-4 h-4" />
-              </div>
-              <Card className="p-3 bg-card border-primary/50">
-                <div className="text-sm whitespace-pre-wrap">
-                  {streamingMessage}
-                  <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
-                </div>
-                <div className="flex items-center mt-2 text-xs opacity-70">
-                  <Badge variant="outline" className="text-primary border-primary/50">
-                    Streaming...
-                  </Badge>
-                </div>
-              </Card>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Typing indicator */}
-        {isTyping && !streamingMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-start"
-          >
-            <div className="flex items-start space-x-2">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center">
-                <Bot className="w-4 h-4" />
-              </div>
-              <Card className="p-3 bg-card">
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
-                </div>
-              </Card>
-            </div>
-          </motion.div>
-        )}
-
         <div ref={messagesEndRef} />
       </div>
 
@@ -291,22 +152,16 @@ export function ChatInterface() {
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Ask Columbus AI about flights, hotels, restaurants, or activities..."
             onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-            disabled={isPlanning}
             className="flex-1"
           />
           <Button 
             onClick={handleSendMessage} 
-            disabled={!inputValue.trim() || isPlanning}
+            disabled={!inputValue.trim()}
             size="icon"
           >
             <Send className="w-4 h-4" />
           </Button>
         </div>
-        {isPlanning && (
-          <div className="text-xs text-muted-foreground mt-2">
-            {streamingMessage ? 'Columbus AI is responding...' : 'Our smart travel agents are working on your request...'}
-          </div>
-        )}
       </div>
     </div>
   );

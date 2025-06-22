@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from 'react';
 import { MapPin, Calendar as CalendarIcon, Users, Mountain, Sparkles, Crown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +8,7 @@ import { useTripStore } from '@/lib/store';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '../ui/button';
 import { ItineraryItem } from '@/lib/types';
+import { GeneratingTripModal } from '@/components/agents/GeneratingTripModal';
 
 interface Meal {
   name: string;
@@ -87,7 +89,9 @@ const getCoordinatesFromPlaceId = async (placeId: string): Promise<[number, numb
 };
 
 export function TripSummaryBar() {
-  const { destination, dates, preferences, agentStatuses, setItinerary } = useTripStore();
+  const { destination, dates, preferences, agentStatuses, setItinerary, updateAgentStatus } = useTripStore();
+  const [isGeneratingModalOpen, setIsGeneratingModalOpen] = useState(false);
+  const [isTripGenerated, setIsTripGenerated] = useState(false);
 
   const handleGenerateTrip = async () => {
     if (!destination || !dates) {
@@ -95,6 +99,10 @@ export function TripSummaryBar() {
       // Optionally, show a toast or other notification to the user
       return;
     }
+
+    setIsGeneratingModalOpen(true);
+    setIsTripGenerated(false);
+    agentStatuses.forEach(agent => updateAgentStatus(agent.type, { status: 'working' }));
 
     const payload = {
       destinationCity: destination.name,
@@ -127,12 +135,16 @@ export function TripSummaryBar() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Failed to generate trip:', response.status, errorData);
-        // Here you might want to update some state to show an error to the user
+        agentStatuses.forEach(agent => updateAgentStatus(agent.type, { status: 'error' }));
+        setIsGeneratingModalOpen(false);
         return;
       }
 
-      // Parse the JSON response from the server (non-streaming)
       const data = await response.json();
+      
+      agentStatuses.forEach(agent => updateAgentStatus(agent.type, { status: 'completed' }));
+      setIsTripGenerated(true);
+      
       const mealsByDays = data.response.messages[1].content[1].result.result.meals;
       const hotelsByDays = data.response.messages[1].content[0].result.days;
 
@@ -233,6 +245,8 @@ export function TripSummaryBar() {
 
     } catch (error) {
       console.error('An error occurred while generating the trip:', error);
+      agentStatuses.forEach(agent => updateAgentStatus(agent.type, { status: 'error' }));
+      setIsGeneratingModalOpen(false);
     }
   };
 
@@ -281,62 +295,69 @@ export function TripSummaryBar() {
   };
 
   return (
-    <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex items-center justify-between px-4 py-2">
-        {/* Left: Trip Info */}
-        <div className="flex flex-wrap items-center gap-2 text-sm items-center">
-          <BrandLogo size={32} className="mr-2" />
-          {destination && (
+    <>
+      <GeneratingTripModal
+        isOpen={isGeneratingModalOpen}
+        onClose={() => setIsGeneratingModalOpen(false)}
+        isSuccess={isTripGenerated}
+      />
+      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex items-center justify-between px-4 py-2">
+          {/* Left: Trip Info */}
+          <div className="flex flex-wrap items-center gap-2 text-sm items-center">
+            <BrandLogo size={32} className="mr-2" />
+            {destination && (
+              <Badge variant="outline" className="flex items-center gap-1 px-2 py-1">
+                <MapPin className="w-3 h-3" />
+                {destination.name}
+              </Badge>
+            )}
+            {dates && (
+              <Badge variant="outline" className="flex items-center gap-1 px-2 py-1">
+                <CalendarIcon className="w-3 h-3" />
+                {formatDates()}
+              </Badge>
+            )}
             <Badge variant="outline" className="flex items-center gap-1 px-2 py-1">
-              <MapPin className="w-3 h-3" />
-              {destination.name}
+              <Users className="w-3 h-3" />
+              {preferences.travelers}
             </Badge>
-          )}
-          {dates && (
             <Badge variant="outline" className="flex items-center gap-1 px-2 py-1">
-              <CalendarIcon className="w-3 h-3" />
-              {formatDates()}
+              {getStyleIcon()}
+              {preferences.style}
             </Badge>
-          )}
-          <Badge variant="outline" className="flex items-center gap-1 px-2 py-1">
-            <Users className="w-3 h-3" />
-            {preferences.travelers}
-          </Badge>
-          <Badge variant="outline" className="flex items-center gap-1 px-2 py-1">
-            {getStyleIcon()}
-            {preferences.style}
-          </Badge>
-          <Badge variant="outline" className="flex items-center gap-1 px-2 py-1">
-            <span className="text-xs">{getBudgetIcon()}</span>
-            {preferences.budget}
-          </Badge>
-        </div>
-
-        {/* Right: Agent statuses and Generate button */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1">
-            {agentStatuses.map((agent) => (
-              <Tooltip key={agent.type}>
-                <TooltipTrigger asChild>
-                  <div className="relative w-8 h-8 flex items-center justify-center">
-                    <span className="text-sm" title={agent.name}>{agent.emoji}</span>
-                    <div className="absolute -top-0.5 -right-0.5">{getStatusIcon(agent.status)}</div>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <div className="text-center">
-                    <div className="font-medium text-xs">{agent.name}</div>
-                    <div className="text-xs capitalize">{agent.status}</div>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            ))}
+            <Badge variant="outline" className="flex items-center gap-1 px-2 py-1">
+              <span className="text-xs">{getBudgetIcon()}</span>
+              {preferences.budget}
+            </Badge>
           </div>
-          <Button onClick={handleGenerateTrip} size="sm">
-            Generate Trip Plan
-          </Button>
+
+          {/* Right: Agent statuses and Generate button */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1">
+              {agentStatuses.map((agent) => (
+                <Tooltip key={agent.type}>
+                  <TooltipTrigger asChild>
+                    <div className="relative w-8 h-8 flex items-center justify-center">
+                      <span className="text-sm" title={agent.name}>{agent.emoji}</span>
+                      <div className="absolute -top-0.5 -right-0.5">{getStatusIcon(agent.status)}</div>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <div className="text-center">
+                      <div className="font-medium text-xs">{agent.name}</div>
+                      <div className="text-xs capitalize">{agent.status}</div>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+            <Button onClick={handleGenerateTrip} size="sm">
+              Generate Trip Plan
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 } 
