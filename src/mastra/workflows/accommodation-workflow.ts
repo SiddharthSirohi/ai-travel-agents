@@ -181,9 +181,22 @@ const searchGoogleMapsStep = createStep({
       if (response.data.status !== 'OK') {
         throw new Error(`Google Maps API error: ${response.data.status}`);
       }
+
+      // Filter down the response data to only what we need
+      const filteredPlaces = response.data.results.map(place => ({
+        place_id: place.place_id,
+        name: place.name,
+        types: place.types,
+        rating: place.rating,
+        price_level: place.price_level,
+        formatted_address: place.formatted_address,
+        geometry: {
+          location: place.geometry?.location
+        }
+      }));
       
       return { 
-        places: response.data.results || [], 
+        places: filteredPlaces, 
         query,
         mergedWaypoints
       };

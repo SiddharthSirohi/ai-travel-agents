@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
 import { cn } from '@/lib/utils';
 import { useTripStore } from '@/lib/store';
+import type { TravelPreferences } from '@/lib/types';
 
 interface Question {
   id: string;
@@ -84,20 +85,21 @@ export default function FollowupPage() {
   const { updatePreferences } = useTripStore();
 
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, any>>({});
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
 
   const currentQuestion = QUESTIONS[step];
 
   const handleSingleSelect = (value: string) => {
     setAnswers((prev) => {
       const newAnswers = { ...prev, [currentQuestion.field]: value };
+      // Immediately persist the latest answer to the global trip store
+      updatePreferences({ [currentQuestion.field]: value } as Partial<TravelPreferences>);
 
       // Auto-advance to next question or finish
       if (step < QUESTIONS.length - 1) {
         setStep(step + 1);
       } else {
-        // Final step reached – save and go
-        updatePreferences(newAnswers);
+        // Final step reached – navigate to trip page
         router.push('/trip');
       }
 
@@ -107,11 +109,16 @@ export default function FollowupPage() {
 
   const handleMultiToggle = (value: string) => {
     setAnswers((prev) => {
-      const existing: string[] = prev[currentQuestion.field] || [];
+      const existing: string[] = Array.isArray(prev[currentQuestion.field]) ? (prev[currentQuestion.field] as string[]) : [];
       const newArr = existing.includes(value)
         ? existing.filter((v) => v !== value)
         : [...existing, value];
-      return { ...prev, [currentQuestion.field]: newArr };
+      const updated = { ...prev, [currentQuestion.field]: newArr };
+
+      // Persist multi-select answers as the user toggles them
+      updatePreferences({ [currentQuestion.field]: newArr } as Partial<TravelPreferences>);
+
+      return updated;
     });
   };
 
@@ -130,7 +137,7 @@ export default function FollowupPage() {
     if (step < QUESTIONS.length - 1) {
       setStep(step + 1);
     } else {
-      updatePreferences(answers);
+      // Preferences are already persisted during selection – just navigate
       router.push('/trip');
     }
   };
@@ -163,14 +170,14 @@ export default function FollowupPage() {
                 {currentQuestion.type === 'single' ? (
                   <Combobox
                     options={currentQuestion.options}
-                    value={answers[currentQuestion.field] || ''}
+                    value={(answers[currentQuestion.field] ?? '') as string}
                     onValueChange={handleSingleSelect}
                     className="w-full"
                   />
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {currentQuestion.options.map((opt) => {
-                      const selected = (answers[currentQuestion.field] || []).includes(opt.value);
+                      const selected = Array.isArray(answers[currentQuestion.field]) && (answers[currentQuestion.field] as string[]).includes(opt.value);
                       return (
                         <Button
                           key={opt.value}

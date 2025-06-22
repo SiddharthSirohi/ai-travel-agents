@@ -9,7 +9,7 @@ const accommodationWorkflowToolInputSchema = z.object({
   waypoints: z.array(waypointSchema).describe('Array of waypoints with location, date, and objective'),
   budgetTier: z.enum(['budget', 'mid-range', 'luxury', 'ultra-luxury']).describe('Budget tier for accommodations'),
   accommodationType: z.enum(['hotel', 'hostel', 'resort', 'apartment', 'guesthouse', 'bnb']).describe('Type of accommodation'),
-  limit: z.number().min(1).max(20).default(10).describe('Number of accommodations to return (max 20)')
+  limit: z.number().min(1).max(20).default(5).describe('Number of accommodations to return (max 20, default 5)')
 });
 
 export const accommodationWorkflowTool = createTool({

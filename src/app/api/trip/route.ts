@@ -28,46 +28,20 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("agent", agent);
-         // 5. Construct the detailed prompt for the agent, providing full context.
-     const agentPrompt = `
-       You have been tasked with creating a detailed travel itinerary including accommodations.
-
-       First, here is the high-level, day-by-day plan you must follow:
-       \`\`\`json
-       ${JSON.stringify(prePlanResult.waypoints, null, 2)}
-       \`\`\`
-
-       Next, here are the user's detailed preferences which you must adhere to for all recommendations:
-       \`\`\`json
-       ${JSON.stringify(preferences, null, 2)}
-       \`\`\`
-
-       Your job is to use your available tools to flesh out this itinerary.
-       For each location in the plan:
-       1. Use the accommodation-workflow-tool to find suitable accommodations that match:
-          - The user's budget tier (budget/mid-range/luxury/ultra-luxury)
-          - Preferred accommodation type (hotel/hostel/resort/apartment/guesthouse/bnb)
-          - Location requirements from the waypoints
-       2. Find suitable dining and activity options that match the user's preferences
-       
-       When you are done, present the final, enriched itinerary as a comprehensive, day-by-day plan including:
-       - Accommodation details with check-in/check-out dates
-       - Daily activities and dining recommendations
-       - Local transportation options between locations
-     `;
-
-         // 6. Invoke the agent with the prompt and get the streaming response object.
+         // 5. Invoke the agent with the preferences and waypoints
      console.log('API Route: Invoking orchestrator agent...');
      const responseStream = await agent.stream(
        [
-         { role: 'system', content: agentPrompt },
          { 
            role: 'user', 
-           content: 'Please generate a detailed itinerary including accommodations, dining, and activities that match the provided preferences and waypoints.'
+           content: JSON.stringify({
+             preferences,
+             waypoints: prePlanResult.waypoints
+           })
          }
        ],
        { 
-         maxSteps: 15, // Increased to allow for accommodation workflow
+         maxSteps: 8,
        }
      );
 

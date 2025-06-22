@@ -2,15 +2,16 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { diningWorkflowOutputSchema } from '../workflows/dining-workflow';
+import { waypointSchema } from '../../lib/pre-plan';
 
 // Re-exporting the schema for easy use by the orchestrator
 export const diningToolInputSchema = z.object({
-  location: z.string().describe('The city or area to search for restaurants'),
+  waypoints: z.array(waypointSchema).describe('Array of waypoints with location, date, and objective'),
   cuisine: z.string().optional().describe('Type of cuisine (e.g., Italian, Chinese, Mexican, etc.)'),
   priceRange: z.enum(['$', '$$', '$$$', '$$$$']).optional().describe('Price range from $ (cheap) to $$$$ (expensive)'),
   dietary: z.string().optional().describe('Dietary preference (e.g., vegetarian, vegan, gluten-free)'),
   rating: z.number().min(1).max(5).optional().describe('Minimum rating (1-5 stars)'),
-  limit: z.number().min(1).max(20).default(10).describe('Number of restaurants to return (max 20)')
+  limit: z.number().min(1).max(10).default(6).describe('Max restaurants to sample per location')
 });
 
 export const diningTool = createTool({

@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:mastra": "mastra dev",
+    "dev:mastra": "mastra dev --dir src/mastra",
     "build": "next build",
+    "build:mastra": "mastra build --dir src/mastra",
     "start": "next start",
     "lint": "next lint",
     "scrape": "tsx airbnb_scraper_v2.ts"

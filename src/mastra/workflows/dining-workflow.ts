@@ -3,21 +3,22 @@ import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
 import { Client } from '@googlemaps/google-maps-services-js';
 import { generateStructured } from '../../lib/llm-utils';
+import { waypointSchema } from '../../lib/pre-plan';
 
 const googleMapsClient = new Client({});
 
 // --- Input and Output Schemas ---
 
 const diningWorkflowInputSchema = z.object({
-  location: z.string().describe('The city or area to search for restaurants'),
+  waypoints: z.array(waypointSchema).describe('Array of waypoints with location, date, and objective'),
   cuisine: z.string().optional().describe('Type of cuisine (e.g., Italian, Chinese, Mexican, etc.)'),
   priceRange: z.enum(['$', '$$', '$$$', '$$$$']).optional().describe('Price range from $ (cheap) to $$$$ (expensive)'),
   dietary: z.string().optional().describe('Dietary preference (e.g., vegetarian, vegan, gluten-free)'),
   rating: z.number().min(1).max(5).optional().describe('Minimum rating (1-5 stars)'),
-  limit: z.number().min(1).max(20).default(10).describe('Number of restaurants to return (max 20)')
+  limit: z.number().min(1).max(10).default(6).describe('Max restaurants to sample per location (internally we pick 2)')
 });
 
-const restaurantSchema = z.object({
+export const restaurantSchema = z.object({
   name: z.string(),
   cuisine: z.string(),
   rating: z.number(),
@@ -29,109 +30,120 @@ const restaurantSchema = z.object({
   placeId: z.string()
 });
 
+// ---- New Meal-per-Day Output ----
+const mealSchema = restaurantSchema.extend({
+  timeFrom: z.string(),
+  timeTo: z.string(),
+});
+
+export const dayMealsSchema = z.object({
+  date: z.string(),
+  lunch: mealSchema,
+  dinner: mealSchema,
+});
+
 export const diningWorkflowOutputSchema = z.object({
-  restaurants: z.array(restaurantSchema),
-  location: z.string(),
-  query: z.string(),
-  totalFound: z.number()
+  meals: z.array(dayMealsSchema),
+  totalFound: z.number(),
 });
 
 // --- Workflow Steps ---
 
-const formulateQueryStep = createStep({
-  id: 'formulate-query',
+// -- Single step: iterate over waypoints and pick 2 meals (lunch & dinner) per day --
+const generateMealsStep = createStep({
+  id: 'generate-meals',
   inputSchema: diningWorkflowInputSchema,
-  outputSchema: z.object({ query: z.string() }),
-  execute: async ({ inputData }: any) => {
-    const { cuisine, dietary, location } = inputData;
-    const queryParts: string[] = [];
-    if (dietary) queryParts.push(dietary);
-    if (cuisine) queryParts.push(cuisine);
-    queryParts.push('restaurants in', location);
-    return { query: queryParts.join(' ') };
-  },
-});
-
-const searchGoogleMapsStep = createStep({
-  id: 'search-google-maps',
-  inputSchema: z.object({ query: z.string() }),
-  outputSchema: z.object({
-    places: z.array(z.any()), // Using z.any() for raw Google Maps results
-    query: z.string(),
-  }),
-  execute: async ({ inputData }: any) => {
-    const { query } = inputData;
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-
-    if (!apiKey) {
-      console.warn('Google Maps API key not found. Mocking search results.');
-      return { places: [], query };
-    }
-
-    try {
-      const response = await googleMapsClient.textSearch({
-        params: { query, key: apiKey },
-      });
-
-      if (response.data.status !== 'OK') {
-        throw new Error(`Google Maps API error: ${response.data.status}`);
-      }
-      return { places: response.data.results || [], query };
-    } catch (error) {
-      console.error('Google Maps API error:', error);
-      return { places: [], query };
-    }
-  },
-});
-
-const processResultsStep = createStep({
-  id: 'process-results',
-  inputSchema: z.object({
-    places: z.array(z.any()),
-    query: z.string(),
-  }),
   outputSchema: diningWorkflowOutputSchema,
-  execute: async ({ inputData, getInitData }: any) => {
-    const { places, query } = inputData;
-    const originalInput = getInitData() as z.infer<typeof diningWorkflowInputSchema>;
-    const { location, priceRange, rating, limit } = originalInput;
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  execute: async ({ inputData }: any) => {
+    const { waypoints, cuisine, priceRange, dietary, rating, limit } = inputData;
+    const meals = [] as z.infer<typeof dayMealsSchema>[];
 
-    if (!apiKey || places.length === 0) {
-      console.warn('Using mock data for restaurants.');
-      return getMockRestaurants(originalInput);
-    }
-    
-    const restaurants = [];
-    // Get more results to allow for filtering
-    for (const place of places.slice(0, limit * 2)) {
-      const placePriceRange = mapPriceLevel(place.price_level);
-      
-      if (priceRange && placePriceRange !== priceRange) continue;
-      if (rating && place.rating && place.rating < rating) continue;
+    for (const waypoint of waypoints) {
+      const location = waypoint.location;
+      const queryParts: string[] = [];
+      if (dietary) queryParts.push(dietary);
+      if (cuisine) queryParts.push(cuisine);
+      queryParts.push('restaurants in', location);
+      const query = queryParts.join(' ');
 
-      const enhanced = await enhanceRestaurantWithLLM(place);
+      // Fetch candidate places (Google Maps or mock)
+      let places: any[] = [];
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      if (apiKey) {
+        try {
+          const response = await googleMapsClient.textSearch({ params: { query, key: apiKey } });
+          if (response.data.status === 'OK') {
+            places = response.data.results.map(place => ({
+              name: place.name,
+              place_id: place.place_id,
+              rating: place.rating,
+              price_level: place.price_level,
+              formatted_address: place.formatted_address,
+              formatted_phone_number: place.formatted_phone_number,
+              types: place.types,
+              reviews: place.reviews?.slice(0, 2)
+            }));
+          }
+        } catch (e) {
+          console.error('Google Maps error', e);
+        }
+      }
 
-      restaurants.push({
-        name: place.name || 'Unknown Restaurant',
-        cuisine: enhanced.cuisine,
-        rating: place.rating || 0,
-        priceRange: placePriceRange,
-        address: place.formatted_address || 'Address not available',
-        phone: place.formatted_phone_number || undefined,
-        description: enhanced.description,
-        specialties: enhanced.specialties,
-        placeId: place.place_id || '',
-      });
+      // Fallback to mock if none found or API key missing
+      if (places.length === 0) {
+        places = getMockRestaurantsForLocation(location, cuisine, priceRange, rating, limit);
+      }
 
-      if (restaurants.length >= limit) break;
+      // Apply filters
+      const filtered: any[] = [];
+      for (const place of places) {
+        const pRange = mapPriceLevel((place as any).price_level);
+        if (priceRange && pRange !== priceRange) continue;
+        if (rating && place.rating && place.rating < rating) continue;
+        filtered.push(place);
+        if (filtered.length >= limit) break;
+      }
+
+      // Need at least 2 restaurants
+      const [first, second] = filtered.length >= 2 ? filtered : [...filtered, ...filtered].slice(0,2);
+
+      const lunchEnhanced = await enhanceRestaurantWithLLM(first);
+      const dinnerEnhanced = await enhanceRestaurantWithLLM(second);
+
+      const lunch = {
+        name: first.name,
+        cuisine: lunchEnhanced.cuisine,
+        rating: first.rating || 0,
+        priceRange: mapPriceLevel(first.price_level),
+        address: first.formatted_address || 'Address not available',
+        phone: first.formatted_phone_number || undefined,
+        description: lunchEnhanced.description,
+        specialties: lunchEnhanced.specialties,
+        placeId: first.place_id || '',
+        timeFrom: '12PM',
+        timeTo: '2PM',
+      } as const;
+
+      const dinner = {
+        name: second.name,
+        cuisine: dinnerEnhanced.cuisine,
+        rating: second.rating || 0,
+        priceRange: mapPriceLevel(second.price_level),
+        address: second.formatted_address || 'Address not available',
+        phone: second.formatted_phone_number || undefined,
+        description: dinnerEnhanced.description,
+        specialties: dinnerEnhanced.specialties,
+        placeId: second.place_id || '',
+        timeFrom: '8PM',
+        timeTo: '10PM',
+      } as const;
+
+      meals.push({ date: waypoint.date, lunch, dinner });
     }
 
     return {
-      restaurants,
-      location,
-      query,
-      totalFound: restaurants.length,
+      meals,
+      totalFound: meals.length * 2,
     };
   },
 });
@@ -143,9 +155,7 @@ export const diningWorkflow = createWorkflow({
   inputSchema: diningWorkflowInputSchema,
   outputSchema: diningWorkflowOutputSchema,
 })
-  .then(formulateQueryStep)
-  .then(searchGoogleMapsStep)
-  .then(processResultsStep)
+  .then(generateMealsStep)
   .commit();
 
 // --- Helper Functions (moved from dining-tool.ts) ---
@@ -217,9 +227,7 @@ function getDefaultEnhancement(restaurantData: any): {
   };
 }
 
-function getMockRestaurants(context: any) {
-  const { location, cuisine, priceRange, rating, limit, dietary } = context;
-  
+function getMockRestaurantsForLocation(location: string, cuisine?: string, priceRange?: string, rating?: number, limit = 6) {
   const mockRestaurants = [
     {
       name: "Bella Vista Italian", cuisine: "Italian", rating: 4.5, priceRange: "$$$",
@@ -252,18 +260,5 @@ function getMockRestaurants(context: any) {
     filteredRestaurants = filteredRestaurants.filter(r => r.rating >= rating);
   }
 
-  const limitedRestaurants = filteredRestaurants.slice(0, limit);
-
-  const queryParts: string[] = [];
-  if (dietary) queryParts.push(dietary);
-  if (cuisine) queryParts.push(cuisine);
-  queryParts.push('restaurants in', location);
-  const query = queryParts.join(' ');
-
-  return {
-    restaurants: limitedRestaurants,
-    location,
-    query,
-    totalFound: filteredRestaurants.length
-  };
+  return filteredRestaurants.slice(0, limit);
 } 
