@@ -323,6 +323,31 @@ export function TripSummaryBar() {
         experiences: experiencesByDays.length
       });
 
+      // Add detailed logging for experiences
+      console.log('Raw experiences data:', experiencesByDays);
+      experiencesByDays.forEach((day: ExperienceDay, index: number) => {
+        console.log(`Day ${index} (${day.date}):`, {
+          morningExperience: day.morningExperience ? {
+            name: day.morningExperience.name,
+            locationLatitude: day.morningExperience.locationLatitude,
+            locationLongitude: day.morningExperience.locationLongitude,
+            coordinateTypes: {
+              lat: typeof day.morningExperience.locationLatitude,
+              lng: typeof day.morningExperience.locationLongitude
+            }
+          } : null,
+          afternoonExperience: day.afternoonExperience ? {
+            name: day.afternoonExperience.name,
+            locationLatitude: day.afternoonExperience.locationLatitude,
+            locationLongitude: day.afternoonExperience.locationLongitude,
+            coordinateTypes: {
+              lat: typeof day.afternoonExperience.locationLatitude,
+              lng: typeof day.afternoonExperience.locationLongitude
+            }
+          } : null
+        });
+      });
+
       const mealItems: ItineraryItem[] = (mealsByDays || []).flatMap((day: MealDay) => {
         const items: ItineraryItem[] = [];
         
@@ -411,6 +436,18 @@ export function TripSummaryBar() {
         if (day.morningExperience) {
           const exp = day.morningExperience;
           const duration = calculateDuration(exp.startTime, exp.endTime);
+          
+          // Validate coordinates
+          const lat = Number(exp.locationLatitude);
+          const lng = Number(exp.locationLongitude);
+          const hasValidCoordinates = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+          
+          console.log(`Morning experience ${exp.name} coordinates:`, {
+            raw: { lat: exp.locationLatitude, lng: exp.locationLongitude },
+            parsed: { lat, lng },
+            valid: hasValidCoordinates
+          });
+          
           items.push({
             id: `${day.date}-morning-experience-${exp.name.replace(/\s+/g, '-')}`,
             type: 'activity',
@@ -420,7 +457,7 @@ export function TripSummaryBar() {
             time: exp.startTime,
             duration: duration,
             location: `${exp.locationLatitude}, ${exp.locationLongitude}`,
-            coordinates: [exp.locationLatitude, exp.locationLongitude],
+            coordinates: hasValidCoordinates ? [lat, lng] : undefined,
             price: 0, // Price not available in the data
             currency: 'USD',
             status: 'confirmed',
@@ -437,6 +474,18 @@ export function TripSummaryBar() {
         if (day.afternoonExperience) {
           const exp = day.afternoonExperience;
           const duration = calculateDuration(exp.startTime, exp.endTime);
+          
+          // Validate coordinates
+          const lat = Number(exp.locationLatitude);
+          const lng = Number(exp.locationLongitude);
+          const hasValidCoordinates = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+          
+          console.log(`Afternoon experience ${exp.name} coordinates:`, {
+            raw: { lat: exp.locationLatitude, lng: exp.locationLongitude },
+            parsed: { lat, lng },
+            valid: hasValidCoordinates
+          });
+          
           items.push({
             id: `${day.date}-afternoon-experience-${exp.name.replace(/\s+/g, '-')}`,
             type: 'activity',
@@ -446,7 +495,7 @@ export function TripSummaryBar() {
             time: exp.startTime,
             duration: duration,
             location: `${exp.locationLatitude}, ${exp.locationLongitude}`,
-            coordinates: [exp.locationLatitude, exp.locationLongitude],
+            coordinates: hasValidCoordinates ? [lat, lng] : undefined,
             price: 0, // Price not available in the data
             currency: 'USD',
             status: 'confirmed',
@@ -463,7 +512,50 @@ export function TripSummaryBar() {
         return items;
       });
 
-      setItinerary([...mealItems, ...hotelItems, ...experienceItems]);
+      // Fetch coordinates for meals using placeId
+      const mealItemsWithCoordinates = await Promise.all(
+        mealItems.map(async (item) => {
+          if (item.details?.placeId && !item.coordinates) {
+            console.log(`Fetching coordinates for meal: ${item.title} (${item.details.placeId})`);
+            const coordinates = await getCoordinatesFromPlaceId(item.details.placeId);
+            if (coordinates) {
+              console.log(`Got coordinates for ${item.title}:`, coordinates);
+              return { ...item, coordinates };
+            } else {
+              console.log(`Failed to get coordinates for ${item.title}`);
+            }
+          }
+          return item;
+        })
+      );
+
+      setItinerary([...mealItemsWithCoordinates, ...hotelItems, ...experienceItems]);
+
+      // Add debugging logs
+      console.log("=== DEBUGGING ITINERARY ITEMS ===");
+      console.log("Meal items:", mealItemsWithCoordinates.map(item => ({
+        id: item.id,
+        title: item.title,
+        coordinates: item.coordinates,
+        type: item.type
+      })));
+      console.log("Hotel items:", hotelItems.map(item => ({
+        id: item.id,
+        title: item.title,
+        coordinates: item.coordinates,
+        type: item.type
+      })));
+      console.log("Experience items:", experienceItems.map(item => ({
+        id: item.id,
+        title: item.title,
+        coordinates: item.coordinates,
+        type: item.type,
+        locationData: {
+          locationLatitude: item.details?.locationLatitude,
+          locationLongitude: item.details?.locationLongitude
+        }
+      })));
+      console.log("All itinerary items with coordinates:", [...mealItemsWithCoordinates, ...hotelItems, ...experienceItems].filter(item => item.coordinates));
 
       console.log("data", data);
 
