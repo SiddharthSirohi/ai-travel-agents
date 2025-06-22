@@ -6,9 +6,61 @@ import { Badge } from '@/components/ui/badge';
 import { useTripStore } from '@/lib/store';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '../ui/button';
+import { ItineraryItem } from '@/lib/types';
+
+interface Meal {
+  name: string;
+  cuisine: string;
+  rating: number;
+  priceRange: string;
+  address: string;
+  description: string;
+  specialties: string[];
+  placeId: string;
+  timeFrom: string;
+  timeTo: string;
+}
+
+interface MealDay {
+  date: string;
+  lunch: Meal;
+  dinner: Meal;
+}
+
+interface HotelInfo {
+  name: string;
+  type: string;
+  rating: number;
+  priceRange: string;
+  location: string;
+  summary: string;
+  placeId: string;
+}
+
+interface HotelDay {
+  date: string;
+  hotel_info: HotelInfo;
+}
+
+const convertTime12to24 = (time: string): string => {
+  if (!time) return '00:00';
+  const timeUpper = time.toUpperCase();
+  const isPM = timeUpper.includes('PM');
+  let [hours] = timeUpper.split(/[^\d]/).map(Number);
+
+  if (isNaN(hours)) return '00:00';
+
+  if (isPM && hours !== 12) {
+    hours += 12;
+  } else if (!isPM && hours === 12) {
+    hours = 0;
+  }
+
+  return `${String(hours).padStart(2, '0')}:00`;
+};
 
 export function TripSummaryBar() {
-  const { destination, dates, preferences, agentStatuses } = useTripStore();
+  const { destination, dates, preferences, agentStatuses, setItinerary } = useTripStore();
 
   const handleGenerateTrip = async () => {
     if (!destination || !dates) {
@@ -52,11 +104,81 @@ export function TripSummaryBar() {
         return;
       }
 
-      // For now, we are not handling the stream, just logging.
-      console.log('Trip generation request successful.');
-      console.log('response', response);
-      // If you have a streaming response, you would handle it here.
-      // e.g., const reader = response.body?.getReader();
+      // Parse the JSON response from the server (non-streaming)
+      const data = await response.json();
+      const mealsByDays = data.response.messages[1].content[1].result.result.meals;
+      const hotelsByDays = data.response.messages[1].content[0].result.days;
+
+      console.log('Meals by days:', mealsByDays);
+      console.log('Hotels by days:', hotelsByDays);
+      console.log('Trip generation response:', data);
+
+      const mealItems: ItineraryItem[] = mealsByDays.flatMap((day: MealDay) => {
+        const lunchItem: ItineraryItem = {
+          id: `${day.date}-lunch-${day.lunch.placeId}`,
+          type: 'meal',
+          title: day.lunch.name,
+          description: day.lunch.description,
+          date: day.date,
+          time: convertTime12to24(day.lunch.timeFrom),
+          duration: 120,
+          location: day.lunch.address,
+          price: 0, // Or parse from priceRange
+          currency: 'USD',
+          status: 'confirmed',
+          rating: day.lunch.rating,
+          details: {
+            cuisine: day.lunch.cuisine,
+            priceRange: day.lunch.priceRange,
+            specialties: day.lunch.specialties,
+          },
+        };
+        const dinnerItem: ItineraryItem = {
+          id: `${day.date}-dinner-${day.dinner.placeId}`,
+          type: 'meal',
+          title: day.dinner.name,
+          description: day.dinner.description,
+          date: day.date,
+          time: convertTime12to24(day.dinner.timeFrom),
+          duration: 120,
+          location: day.dinner.address,
+          price: 0,
+          currency: 'USD',
+          status: 'confirmed',
+          rating: day.dinner.rating,
+          details: {
+            cuisine: day.dinner.cuisine,
+            priceRange: day.dinner.priceRange,
+            specialties: day.dinner.specialties,
+          },
+        };
+        return [lunchItem, dinnerItem];
+      });
+
+      const hotelItems: ItineraryItem[] = (hotelsByDays || []).map((day: HotelDay) => {
+        const [lat, lng] = day.hotel_info.location.split(',').map(Number);
+        return {
+          id: `${day.date}-hotel-${day.hotel_info.placeId}`,
+          type: 'hotel',
+          title: day.hotel_info.name,
+          description: day.hotel_info.summary,
+          date: day.date,
+          time: '00:00', // Typical check-in time
+          duration: 1440, // Full day
+          location: day.hotel_info.name.split('|')[0].trim(),
+          coordinates: [lat, lng] as [number, number],
+          price: 0,
+          currency: 'USD',
+          status: 'confirmed',
+          rating: day.hotel_info.rating,
+          details: {
+            ...day.hotel_info
+          }
+        };
+      });
+
+      setItinerary([...mealItems, ...hotelItems]);
+
     } catch (error) {
       console.error('An error occurred while generating the trip:', error);
     }

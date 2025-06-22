@@ -17,28 +17,23 @@ const accommodationWorkflowInputSchema = z.object({
   limit: z.number().min(1).max(20).default(10).describe('Number of accommodations to return (max 20)')
 });
 
-const accommodationSchema = z.object({
+const hotelInfoSchema = z.object({
   name: z.string(),
   type: z.string(),
   rating: z.number(),
   priceRange: z.string(),
   location: z.string().describe('GPS coordinate or detailed address'),
-  from: z.string().describe('Start of stay (ISO date)'),
-  to: z.string().describe('End of stay (ISO date)'),
   summary: z.string().optional().describe('A brief, AI-generated summary of the accommodation.'),
   placeId: z.string().optional()
 });
 
+const daySchema = z.object({
+  date: z.string(),
+  hotel_info: hotelInfoSchema
+});
+
 export const accommodationWorkflowOutputSchema = z.object({
-  accommodations: z.array(accommodationSchema),
-  mergedWaypoints: z.array(z.object({
-    location: z.string(),
-    from: z.string(),
-    to: z.string(),
-    objectives: z.array(z.string())
-  })),
-  query: z.string(),
-  totalFound: z.number()
+  days: z.array(daySchema)
 });
 
 // --- Workflow Steps ---
@@ -47,71 +42,54 @@ const mergeWaypointsStep = createStep({
   id: 'merge-waypoints',
   inputSchema: accommodationWorkflowInputSchema,
   outputSchema: z.object({
-    mergedWaypoints: z.array(z.object({
+    selectedWaypoint: z.object({
       location: z.string(),
-      from: z.string(),
-      to: z.string(),
-      objectives: z.array(z.string())
-    }))
+      date: z.string(),
+      objective: z.string()
+    }),
+    allDates: z.array(z.string())
   }),
   execute: async ({ inputData }: any) => {
-    const { waypoints } = inputData;
-    const locationGroups: Record<string, {
-      location: string;
-      dates: string[];
-      objectives: string[];
-    }> = {};
-
-    // Group waypoints by location
-    waypoints.forEach((waypoint: { location: string; date: string; objective: string }) => {
-      const location = waypoint.location.toLowerCase().trim();
-      if (!locationGroups[location]) {
-        locationGroups[location] = {
-          location: waypoint.location,
-          dates: [],
-          objectives: []
-        };
-      }
-      locationGroups[location].dates.push(waypoint.date);
-      locationGroups[location].objectives.push(waypoint.objective);
-    });
-
-    // Merge consecutive dates for same location
-    const mergedWaypoints = Object.values(locationGroups).map((group) => {
-      const sortedDates = group.dates.sort();
-      return {
-        location: group.location,
-        from: sortedDates[0],
-        to: sortedDates[sortedDates.length - 1],
-        objectives: [...new Set(group.objectives)] // Remove duplicates
-      };
-    });
-
-    return { mergedWaypoints };
+    const { waypoints } = inputData as z.infer<typeof accommodationWorkflowInputSchema>;
+    
+    // Get all unique dates
+    const allDates = [...new Set(waypoints.map(w => w.date))].sort();
+    
+    // Select a random waypoint
+    const selectedWaypoint = waypoints[Math.floor(Math.random() * waypoints.length)];
+    
+    return { 
+      selectedWaypoint: {
+        location: selectedWaypoint.location,
+        date: selectedWaypoint.date,
+        objective: selectedWaypoint.objective
+      },
+      allDates 
+    };
   }
 });
 
 const formulateQueryStep = createStep({
   id: 'formulate-query',
   inputSchema: z.object({
-    mergedWaypoints: z.array(z.object({
+    selectedWaypoint: z.object({
       location: z.string(),
-      from: z.string(),
-      to: z.string(),
-      objectives: z.array(z.string())
-    }))
+      date: z.string(),
+      objective: z.string()
+    }),
+    allDates: z.array(z.string())
   }),
   outputSchema: z.object({ 
     query: z.string(),
-    mergedWaypoints: z.array(z.object({
+    selectedWaypoint: z.object({
       location: z.string(),
-      from: z.string(),
-      to: z.string(),
-      objectives: z.array(z.string())
-    }))
+      date: z.string(),
+      objective: z.string()
+    }),
+    allDates: z.array(z.string())
   }),
   execute: async ({ inputData, getInitData }: any) => {
-    const { mergedWaypoints } = inputData;
+    const { selectedWaypoint, allDates } = inputData;
     const originalInput = getInitData() as z.infer<typeof accommodationWorkflowInputSchema>;
     const { city, accommodationType, budgetTier } = originalInput;
 
@@ -126,17 +104,19 @@ Input Details:
 - City: ${city}
 - Accommodation Type: ${accommodationType}
 - Budget Tier: ${budgetTier}
- - Locations with stays: ${mergedWaypoints.map((w: { location: string; from: string; to: string }) => `${w.location} (${w.from} to ${w.to})`).join(', ')}
+- Location: ${selectedWaypoint.location}
+- Stay Date: ${selectedWaypoint.date}
+- Travel Objective: ${selectedWaypoint.objective}
 
-Create a single, effective search query that will find ${accommodationType} accommodations in ${city}. Focus on the accommodation type and location. Include relevant keywords for ${budgetTier} properties.
+Create a single, effective search query that will find ${accommodationType} accommodations in ${selectedWaypoint.location}, ${city}. Focus on the accommodation type and location. Include relevant keywords for ${budgetTier} properties that would suit a traveler whose objective is: "${selectedWaypoint.objective}".
 
 Return only a JSON object with the "query" field.`;
 
     const result = await generateStructured(reformulateSchema, prompt, { temperature: 0.3 });
     
-    const query = result?.query || `${accommodationType} in ${city}`;
+    const query = result?.query || `${accommodationType} in ${selectedWaypoint.location}, ${city}`;
     
-    return { query, mergedWaypoints };
+    return { query, selectedWaypoint, allDates };
   }
 });
 
@@ -144,30 +124,30 @@ const searchGoogleMapsStep = createStep({
   id: 'search-google-maps',
   inputSchema: z.object({ 
     query: z.string(),
-    mergedWaypoints: z.array(z.object({
+    selectedWaypoint: z.object({
       location: z.string(),
-      from: z.string(),
-      to: z.string(),
-      objectives: z.array(z.string())
-    }))
+      date: z.string(),
+      objective: z.string()
+    }),
+    allDates: z.array(z.string())
   }),
   outputSchema: z.object({
     places: z.array(z.any()),
     query: z.string(),
-    mergedWaypoints: z.array(z.object({
+    selectedWaypoint: z.object({
       location: z.string(),
-      from: z.string(),
-      to: z.string(),
-      objectives: z.array(z.string())
-    }))
+      date: z.string(),
+      objective: z.string()
+    }),
+    allDates: z.array(z.string())
   }),
   execute: async ({ inputData }: any) => {
-    const { query, mergedWaypoints } = inputData;
+    const { query, selectedWaypoint, allDates } = inputData;
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
     if (!apiKey) {
       console.warn('Google Maps API key not found. Mocking search results.');
-      return { places: [], query, mergedWaypoints };
+      return { places: [], query, selectedWaypoint, allDates };
     }
 
     try {
@@ -198,87 +178,110 @@ const searchGoogleMapsStep = createStep({
       return { 
         places: filteredPlaces, 
         query,
-        mergedWaypoints
+        selectedWaypoint,
+        allDates
       };
     } catch (error) {
       console.error('Google Maps API error:', error);
-      return { places: [], query, mergedWaypoints };
+      return { places: [], query, selectedWaypoint, allDates };
     }
   }
 });
+
+interface GooglePlace {
+  name: string;
+  type: string;
+  rating: number;
+  priceRange: string;
+  geometry?: {
+    location: {
+      lat: number;
+      lng: number;
+    };
+  };
+  formatted_address: string;
+  summary?: string;
+  place_id: string;
+}
 
 const processResultsStep = createStep({
   id: 'process-results',
   inputSchema: z.object({
     places: z.array(z.any()),
     query: z.string(),
-    mergedWaypoints: z.array(z.object({
+    selectedWaypoint: z.object({
       location: z.string(),
-      from: z.string(),
-      to: z.string(),
-      objectives: z.array(z.string())
-    }))
+      date: z.string(),
+      objective: z.string()
+    }),
+    allDates: z.array(z.string())
   }),
   outputSchema: accommodationWorkflowOutputSchema,
   execute: async ({ inputData, getInitData }: any) => {
-    const { places, query, mergedWaypoints } = inputData;
+    const { places, selectedWaypoint, allDates } = inputData;
     const originalInput = getInitData() as z.infer<typeof accommodationWorkflowInputSchema>;
-    const { budgetTier, accommodationType, limit } = originalInput;
+    const { budgetTier, accommodationType } = originalInput;
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
     if (!apiKey || places.length === 0) {
       console.warn('Using mock data for accommodations.');
-      return getMockAccommodations(originalInput, mergedWaypoints);
+      return getMockAccommodations(originalInput, allDates);
     }
     
-    const allPlaces = places.slice(0, originalInput.limit * 4);
-    const enhancedForAllPlaces = await enhanceAccommodationsWithLLM(allPlaces, budgetTier, accommodationType);
+    // Get enhanced info for all places
+    const enhancedPlaces = await enhanceAccommodationsWithLLM(places, budgetTier, accommodationType);
+    const placeMap = new Map(places.map((p: any, i: number) => [p.place_id, { ...p, ...enhancedPlaces[i] }]));
 
-    const placeMap = new Map(allPlaces.map((p: any, i: number) => [p.place_id, { ...p, ...enhancedForAllPlaces[i] }]));
+    // Use LLM to pick the best hotel based on the objective
+    const bestHotelSchema = z.object({
+      placeId: z.string().describe('The place_id of the best hotel that matches the objective')
+    });
 
-    const accommodations: z.infer<typeof accommodationSchema>[] = [];
-    
-    // Process each merged waypoint to create accommodation entries
-    for (const waypoint of mergedWaypoints) {
-      const waypointAccommodations = [];
-      
-      // Get places near this specific waypoint location
-      for (const place of allPlaces) {
-        const enhancedPlace: any = placeMap.get(place.place_id);
-        if (!enhancedPlace) continue;
-        
-        // Filter by budget tier and type
-        if (!matchesBudgetTier(enhancedPlace.priceRange, budgetTier)) continue;
-        if (!matchesAccommodationType(enhancedPlace.type, accommodationType)) continue;
+    const pickBestHotelPrompt = `You are a travel expert. Pick the best hotel from the list that matches this traveler's objective.
 
-        const accommodation = {
-          name: place.name || 'Unknown Accommodation',
-          type: enhancedPlace.type,
-          rating: place.rating || 0,
-          priceRange: enhancedPlace.priceRange,
-          location: place.geometry?.location ? 
-            `${place.geometry.location.lat},${place.geometry.location.lng}` : 
-            place.formatted_address || 'Location not available',
-          from: waypoint.from,
-          to: waypoint.to,
-          summary: enhancedPlace.summary,
-          placeId: place.place_id || ''
-        };
+Objective: ${selectedWaypoint.objective}
+Budget Tier: ${budgetTier}
+Accommodation Type: ${accommodationType}
 
-        waypointAccommodations.push(accommodation);
-        
-        if (waypointAccommodations.length >= Math.ceil(limit / mergedWaypoints.length)) break;
-      }
-      
-      accommodations.push(...waypointAccommodations);
+Available Hotels:
+${places.map((p: any, i: number) => `
+${i + 1}. ${p.name}
+   - Rating: ${p.rating || 'N/A'}
+   - Price Level: ${mapPriceLevel(p.price_level)}
+   - Address: ${p.formatted_address}
+   - Summary: ${enhancedPlaces[i]?.summary || 'No summary available'}
+   - Place ID: ${p.place_id}
+`).join('\n')}
+
+Return a JSON object with the "placeId" field containing the place_id of the best matching hotel.`;
+
+    const bestHotelResult = await generateStructured(bestHotelSchema, pickBestHotelPrompt, { temperature: 0.3 });
+    const bestPlace = placeMap.get(bestHotelResult?.placeId) as GooglePlace | undefined;
+
+    if (!bestPlace) {
+      console.warn('Failed to select best hotel, using first available.');
+      return getMockAccommodations(originalInput, allDates);
     }
 
-    return {
-      accommodations: accommodations.slice(0, limit),
-      mergedWaypoints,
-      query,
-      totalFound: accommodations.length
+    const bestHotelInfo = {
+      name: bestPlace.name || 'Unknown Accommodation',
+      type: bestPlace.type || accommodationType,
+      rating: bestPlace.rating || 0,
+      priceRange: bestPlace.priceRange || mapPriceLevel(0),
+      location: bestPlace.geometry?.location ? 
+        `${bestPlace.geometry.location.lat},${bestPlace.geometry.location.lng}` : 
+        bestPlace.formatted_address || 'Location not available',
+      summary: bestPlace.summary || `A ${accommodationType} in a convenient location.`,
+      placeId: bestPlace.place_id
     };
+
+    // Create a day entry for each date, all using the same best hotel
+    const days = allDates.map((date: string) => ({
+      date,
+      hotel_info: bestHotelInfo
+    }));
+
+    return { days };
   }
 });
 
@@ -392,72 +395,23 @@ function mapPriceLevel(priceLevel?: number): string {
   }
 }
 
-function matchesBudgetTier(priceRange: string, budgetTier: string): boolean {
-  const tierMap: Record<string, string[]> = {
-    'budget': ['$', '$$'],
-    'mid-range': ['$$', '$$$'],
-    'luxury': ['$$$', '$$$$'],
-    'ultra-luxury': ['$$$$']
+function getMockAccommodations(context: any, allDates: string[]) {
+  const { accommodationType, budgetTier } = context;
+  
+  const mockHotelInfo = {
+    name: `Grand ${accommodationType} Central`,
+    type: accommodationType,
+    rating: 4.5,
+    priceRange: budgetTier === 'budget' ? '$' : budgetTier === 'mid-range' ? '$$' : '$$$',
+    location: 'City Center',
+    summary: `Excellent ${accommodationType} in a prime location with great amenities.`,
+    placeId: 'mock-place-id-1'
   };
-  
-  return tierMap[budgetTier]?.includes(priceRange) || false;
-}
-
-function matchesAccommodationType(type: string, targetType: string): boolean {
-  const typeNormalized = type.toLowerCase();
-  const targetNormalized = targetType.toLowerCase();
-  
-  // Flexible matching
-  if (typeNormalized.includes(targetNormalized) || targetNormalized.includes(typeNormalized)) {
-    return true;
-  }
-  
-  // Special cases
-  const synonyms: Record<string, string[]> = {
-    'hotel': ['hotel', 'inn', 'lodge'],
-    'hostel': ['hostel', 'backpacker'],
-    'resort': ['resort', 'spa'],
-    'apartment': ['apartment', 'flat', 'condo'],
-    'guesthouse': ['guesthouse', 'b&b', 'bnb', 'bed and breakfast'],
-    'bnb': ['bnb', 'b&b', 'bed and breakfast', 'guesthouse']
-  };
-  
-  return synonyms[targetNormalized]?.some(syn => typeNormalized.includes(syn)) || 
-         synonyms[typeNormalized]?.includes(targetNormalized) || false;
-}
-
-function getMockAccommodations(context: any, mergedWaypoints: any[]) {
-  const { city, accommodationType, budgetTier, limit } = context;
-  
-  const mockAccommodations = mergedWaypoints.flatMap(waypoint => [
-    {
-      name: `Grand ${accommodationType} ${waypoint.location}`,
-      type: accommodationType,
-      rating: 4.5,
-      priceRange: budgetTier === 'budget' ? '$' : budgetTier === 'mid-range' ? '$$' : '$$$',
-      location: `${waypoint.location}, ${city}`,
-      from: waypoint.from,
-      to: waypoint.to,
-      summary: `Excellent ${accommodationType} in the heart of ${waypoint.location} with great amenities.`,
-      placeId: `mock-place-id-${waypoint.location}`
-    },
-    {
-      name: `Comfort ${accommodationType} ${waypoint.location}`,
-      type: accommodationType,
-      rating: 4.2,
-      priceRange: budgetTier === 'budget' ? '$' : '$$',
-      location: `${waypoint.location}, ${city}`,
-      from: waypoint.from,
-      to: waypoint.to,
-      summary: `Comfortable and affordable ${accommodationType} option, perfect for your stay.`,
-      placeId: `mock-place-id-2-${waypoint.location}`
-    }
-  ]);
 
   return {
-    accommodations: mockAccommodations.slice(0, limit),
-    mergedWaypoints,
-    query: `${accommodationType} in ${city}`,
-    totalFound: mockAccommodations.length
+    days: allDates.map(date => ({
+      date,
+      hotel_info: mockHotelInfo
+    }))
   };
 } 

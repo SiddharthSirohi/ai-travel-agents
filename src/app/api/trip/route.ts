@@ -28,25 +28,30 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("agent", agent);
-         // 5. Invoke the agent with the preferences and waypoints
-     console.log('API Route: Invoking orchestrator agent...');
-     const responseStream = await agent.stream(
-       [
-         { 
-           role: 'user', 
-           content: JSON.stringify({
-             preferences,
-             waypoints: prePlanResult.waypoints
-           })
-         }
-       ],
-       { 
-         maxSteps: 8,
-       }
-     );
+    // 5. Invoke the agent with the preferences and waypoints (non-streaming)
+    console.log('API Route: Invoking orchestrator agent (non-streaming)...');
+    const agentResponse = await agent.generate(
+      [
+        {
+          role: 'user',
+          content: JSON.stringify({
+            preferences,
+            waypoints: prePlanResult.waypoints,
+          }),
+        },
+      ],
+      {
+        maxSteps: 8,
+      },
+    );
 
-     // 7. Use the Mastra/AI SDK utility to stream the response back to the client.
-     return responseStream.toDataStreamResponse();
+    // 6. Return a normal JSON response instead of an event stream
+    return new Response(JSON.stringify(agentResponse), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
   } catch (error) {
     console.error('[TRIP_API_ERROR]', error);

@@ -57,6 +57,7 @@ const generateMealsStep = createStep({
   execute: async ({ inputData }: any) => {
     const { waypoints, cuisine, priceRange, dietary, rating, limit } = inputData;
     const meals = [] as z.infer<typeof dayMealsSchema>[];
+    const usedRestaurants = new Set<string>(); // Track used restaurants across all days
 
     for (const waypoint of waypoints) {
       const location = waypoint.location;
@@ -94,18 +95,36 @@ const generateMealsStep = createStep({
         places = getMockRestaurantsForLocation(location, cuisine, priceRange, rating, limit);
       }
 
-      // Apply filters
+      // Apply filters and exclude already used restaurants
       const filtered: any[] = [];
       for (const place of places) {
         const pRange = mapPriceLevel((place as any).price_level);
         if (priceRange && pRange !== priceRange) continue;
         if (rating && place.rating && place.rating < rating) continue;
+        if (usedRestaurants.has(place.name)) continue; // Skip if already used
         filtered.push(place);
         if (filtered.length >= limit) break;
       }
 
+      // If we don't have enough unique restaurants, get more from the original list
+      if (filtered.length < 2) {
+        for (const place of places) {
+          if (filtered.length >= 2) break;
+          const pRange = mapPriceLevel((place as any).price_level);
+          if (priceRange && pRange !== priceRange) continue;
+          if (rating && place.rating && place.rating < rating) continue;
+          if (!usedRestaurants.has(place.name)) {
+            filtered.push(place);
+          }
+        }
+      }
+
       // Need at least 2 restaurants
       const [first, second] = filtered.length >= 2 ? filtered : [...filtered, ...filtered].slice(0,2);
+
+      // Mark these restaurants as used
+      usedRestaurants.add(first.name);
+      usedRestaurants.add(second.name);
 
       const lunchEnhanced = await enhanceRestaurantWithLLM(first);
       const dinnerEnhanced = await enhanceRestaurantWithLLM(second);
